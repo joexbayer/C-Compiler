@@ -1,0 +1,6 @@
+*.o
+.depend
+
+bin/*
+cc
+a.out
