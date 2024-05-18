@@ -19,8 +19,8 @@
 #include <stdarg.h> /* For va_list */
 #include <time.h>
 
-#define POOL_SIZE 64*1024
-#define MAX_MEMBERS 32
+#define POOL_SIZE 128*1024
+#define MAX_MEMBERS 128
 
 #define DEBUG
 #undef DEBUG
@@ -57,7 +57,7 @@ static int *break_patch;
 static int *default_patch;
 
 static int *type_size;
-static int type_new;
+static int type_new = 0;
 
 static int token;
 static int ival;
@@ -179,7 +179,7 @@ static void include(char *file) {
 static void next() {
     char *position;
 
-    while(token = *current_position){
+    while((token = *current_position)){
         ++current_position;
 
         /* Check if new identifier*/
@@ -218,7 +218,7 @@ static void next() {
 
         } else if (IS_DIGIT(token)){
             /* Convert the token to an integer */
-            if(ival = token - '0'){
+            if((ival = token - '0')){
                 while (*current_position >= '0' && *current_position <= '9')
                     ival = ival * 10 + *current_position++ - '0'; 
             } else if(*current_position == 'x' || *current_position == 'X'){
@@ -414,6 +414,48 @@ static void expression(int level) {
             data = (char *)(((int)data + sizeof(int)) & -sizeof(int));
             type = PTR;
             break;
+        case Sizeof:
+            next();
+            if(token == '('){
+                next();
+            }else {
+                printf("%d: open parenthesis expected in sizeof\n", line);
+                exit(-1);
+            }
+
+            type = INT;
+            if(token == Int){
+                next();
+            } else if(token == Char){
+                next();
+                type = CHAR;
+            } else if (token == Struct){
+                next();
+                if(token != Id){
+                    printf("%d: bad struct type\n", line);
+                    exit(-1);
+                }
+                t = last_identifier->stype;
+                next();
+                type = t;
+            } 
+
+            while(token == Mul){
+                next();
+                type += PTR;
+            }
+
+            if(token == ')'){
+                next();
+            } else {
+                printf("%d: close parenthesis expected in sizeof\n", line);
+                exit(-1);
+            }
+
+            *++last_emitted = IMM;
+            *++last_emitted = type >= PTR ? sizeof(int) : type_size[type];
+            type = INT;
+            break;
         case Id:
             id = last_identifier;
             next();
@@ -485,16 +527,16 @@ static void expression(int level) {
             next();
             if(token == Int || token == Char || token == Struct){
                 /* Cast */
-                if(token == INT){
+                if(token == Int){
                     next();
-                    token = INT;
+                    t = INT;
                 } else if(token == Char){
                     next();
-                    token = CHAR;
+                    t = CHAR;
                 } else {
                     next();
                     if (token != Id){
-                        printf("%d: bad struct type\n", line);
+                        printf("%d: bad struct type: %d\n", line, token);
                         exit(-1);
                     }
                     t = last_identifier->stype;
@@ -504,14 +546,14 @@ static void expression(int level) {
                 /* Check for pointers */
                 while(token == Mul){
                     next();
-                    token += PTR;
+                    t += PTR;
                 }
 
                 /* Check for the end of the cast */
                 if(token == ')'){
                     next();
                 } else {
-                    printf("%d: bad cast\n", line);
+                    printf("%d: bad cast: %c (%d)\n", line, token, token);
                     exit(-1);
                 }
                 
@@ -653,7 +695,6 @@ static void expression(int level) {
                 *++last_emitted = ((type = t) == CHAR) ? SC : SI;
                 break;
             case Cond:
-                printf("Cond\n");
                 next();
                 *++last_emitted = BZ;
                 b = ++last_emitted;
@@ -991,7 +1032,7 @@ static void statement() {
         
         case While: 
             next();
-            a = (int*)((int)(last_emitted+1) - (int)emitted_code);
+            a = last_emitted+1;
 
             if(token != '('){
                 printf("%d: open parenthesis expected\n", line);
@@ -1015,7 +1056,7 @@ static void statement() {
             statement();
 
             *++last_emitted = JMP;
-            *++last_emitted = (int) a;
+            *++last_emitted = (int)((int)a - (int)emitted_code);
             *b = (int) ((int)(last_emitted+1) - (int)emitted_code);
             return;
 
@@ -1046,13 +1087,14 @@ static void statement() {
 
             statement();
 
-            *case_patch = default_patch ? (int) default_patch - (int) emitted_code : (int) (last_emitted + 1) - (int) emitted_code;
+            *case_patch = default_patch ? (int)default_patch - (int)emitted_code : (int)(last_emitted + 1) - (int)emitted_code;
+            
             case_patch = a;
 
             while(break_patch){
-                a = (int*) *break_patch;
+                a = (int*) (*break_patch + (int)emitted_code);
                 *break_patch = (int) (last_emitted + 1) - (int) emitted_code;
-                break_patch = (int*)((int)a + (int)emitted_code);
+                break_patch = (int*)a;
             }
 
             break_patch = b;
@@ -1062,11 +1104,11 @@ static void statement() {
         case Case:
             *++last_emitted = JMP;
             ++last_emitted;
-            *++last_emitted = (int) (last_emitted + 7) - (int) emitted_code;
+            *last_emitted = (int)(last_emitted + 7) - (int)emitted_code;
             *++last_emitted = PSH;
 
             i = *case_patch;
-            *case_patch = (int) last_emitted - (int) emitted_code;
+            *case_patch = (int)last_emitted - (int)emitted_code;
 
             next();
             expression(Or);
@@ -1288,8 +1330,10 @@ int parse(){
                         m->offset = i;
                         m->next = members[bt];
                         members[bt] = m;
+
                         i = i + (ty >= PTR ? sizeof(int) : type_size[ty]);
                         i = (i + 3) & -4;
+                        
                         next();
                         if(token == ','){
                             next();
@@ -1367,6 +1411,7 @@ int parse(){
                     last_identifier->class = Loc;
                     last_identifier->type = ty;
                     last_identifier->val = i++;
+
                     next();
 
                     if(token == ','){
@@ -1406,7 +1451,7 @@ int parse(){
                             printf("%d: bad local declaration\n", line);
                             exit(-1);
                         }
-                        if (last_identifier->class) {
+                        if (last_identifier->class == Loc) {
                             printf("%d: duplicate local definition\n", line);
                             exit(-1);
                         }
@@ -1415,7 +1460,10 @@ int parse(){
                         last_identifier->hval = last_identifier->val;
                         last_identifier->type = ty;
                         last_identifier->class = Loc;
-                        last_identifier->val = ++i;
+                        /* Allocate space based on size */
+                        last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]);
+                        i = last_identifier->val;   
+
                         next();
                         if (token == ',') {
                             next();
@@ -1427,7 +1475,6 @@ int parse(){
                 *++last_emitted = ENT;
                 *++last_emitted = i - local_offset;
 
-                //printf("Local offset: %d\n", i - local_offset);
 
                 while(token != '}'){
                     statement();
@@ -1446,7 +1493,8 @@ int parse(){
             } else {
                 last_identifier->class = Glo;
                 last_identifier->val = (int)data;
-                data += sizeof(int);
+                /* Allocate space based on size */
+                data += (ty >= PTR ? sizeof(int) : type_size[ty]);
 
             }
             if(token == ','){
@@ -1455,14 +1503,16 @@ int parse(){
         }
         next();
     }
+    return 0;
 }
 
 void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[]) {
     int a, cycle = 0;
     int i, *t;
     int *sp, *bp = NULL;
+    int *org;
 
-    sp = (int *)malloc(POOL_SIZE);
+    org = sp = (int *)malloc(POOL_SIZE);
     if (!sp) {printf("Unable to malloc sp\n"); exit(-1);}
     memset(sp, 0, POOL_SIZE);
 
@@ -1483,24 +1533,47 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
     while (1) {
         i = *pc++;
         ++cycle;
+        
         if (0) {
             printf("%d> %.4s", cycle, &opcodes[i * 5]);
             if (i <= ADJ)
-                printf(" 0x%x\n", *pc);
+                printf(" %d\n", *pc);
             else
                 printf("\n");
         }
+
         switch (i) {
-            case LEA:  a = (int)(bp + *pc++); break; /* load local addresss */
+            case LEA:  {
+                    /* Load local address based on offset in *pc */
+                    a = (int)(bp + *pc++);
+                }
+                break; /* load local addresss */
             case IMD:  a = (int)(data + *pc++); break; /* load relativ data address */
             case IMM:  a = *pc++; break;             /* load global address or immediate */
             case JMP:  pc = (int *)((int)code + *pc); break;       /* jump */
-            case JSR:  *--sp = (int)(pc + 1); pc = (int *)((int)code + *pc); break; /* jump to subroutine */
+            case JSR:  {
+                    /* "push" return address and jump to offset in *pc */
+                    *--sp = (int)(pc + 1);
+                    pc = (int *)((int)code + *pc);
+                }
+                break; /* jump to subroutine */
             case BZ:   pc = a ? pc + 1 : (int *)((int)code + *pc); break; /* branch if zero */
             case BNZ:  pc = a ? (int *)((int)code + *pc) : pc + 1; break; /* branch if not zero */
-            case ENT:  *--sp = (int)bp; bp = sp; sp = sp - *pc++; break; /* enter subroutine */
+            case ENT: {
+                    /* Setup bp and sp, allocate space for local variables */
+                    *--sp = (int)bp;
+                    bp = sp;
+                    sp = sp - *pc++;
+                }
+                break; /* enter subroutine */
             case ADJ:  sp = sp + *pc++; break; /* stack adjust */
-            case LEV:  sp = bp; bp = (int *)*sp++; pc = (int *)*sp++; break; /* leave subroutine */
+            case LEV:  {
+                    /* Restore bp and sp */
+                    sp = bp;
+                    bp = (int *)*sp++;
+                    pc = (int *)*sp++;                
+                }
+                break; /* leave subroutine */
             case LI:   a = *(int *)a; break; /* load int */
             case LC:   a = *(char *)a; break; /* load char */
             case SI:   *(int *)*sp++ = a; break; /* store int */
@@ -1527,7 +1600,7 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
             case OPEN: a = open((char *)sp[1], *sp); break;
             case READ: a = read(sp[2], (char *)sp[1], *sp); break;
             case CLOS: a = close(*sp); break;
-            case PRTF: t = sp + pc[1]; a = printf((char *)t[-1], t[-2], t[-3], t[-4], t[-5], t[-6]); break;
+            case PRTF: t = sp + pc[1];a = printf((char *)t[-1], t[-2], t[-3], t[-4], t[-5], t[-6]); break;
             case MALC: a = (int)malloc(*sp); break;
             case MSET: a = (int)memset((char *)sp[2], sp[1], *sp); break;
             case MCMP: a = memcmp((char *)sp[2], (char *)sp[1], *sp); break;
@@ -1535,7 +1608,7 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
                 printf("exit(%d) cycle = %d\n", *sp, cycle);
                 goto vm_exit;
             }
-            default: printf("unknown instruction = %d! cycle = %d\n", i, cycle); goto vm_exit;
+            default: printf("cc: unknown instruction = %d! cycle = %d\n", i, cycle); goto vm_exit;
         }
     }
 vm_exit:
@@ -1577,7 +1650,6 @@ void write_bytecode(const char *filename, int *code, size_t code_size, char *dat
 
 
 int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t *data_size, int *main_pc) {
-    int result;
     FILE *file = fopen(filename, "rb");
     if (!file) {
         printf("Unable to open file for reading: %s\n", filename);
@@ -1726,13 +1798,6 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     struct timespec end_time;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
     long diffInNanos = (end_time.tv_sec - start_time.tv_sec) * (long)1e9 + (end_time.tv_nsec - start_time.tv_nsec);
-    
-    
-    size_t code_size = last_emitted - emitted_code;
-    size_t data_size = data - org_data;
-    int main_offset = (int *)(main_identifier->val - (int)emitted_code);
-    write_bytecode(output_file, emitted_code, code_size, org_data, data_size, &main_offset);
-    printf("Compilation successful. Machine code written to %s\n", output_file);
 
     int *pc;
     if (!(pc = (int *)main_identifier->val)) {
@@ -1740,8 +1805,23 @@ void compile_and_run(char* filename, int argc, char *argv[]){
         exit(-1);
     }
 
-    run_virtual_machine(pc, emitted_code, org_data, argc - 2, &argv[2]);
+    
+    --argc; ++argv;
+
+    // Print args
+    printf("argc = %d\n", argc);
+    for (int i = 0; i < argc; i++) {
+        printf("argv[%d] = %s\n", i, argv[i]);
+    }
+
+    run_virtual_machine(pc, emitted_code, org_data, argc, argv);
     printf("Compilation time: %ld ns\n", diffInNanos);
+
+    size_t code_size = last_emitted - emitted_code;
+    size_t data_size = data - org_data;
+    int main_offset = (int)(main_identifier->val - (int)emitted_code);
+    write_bytecode(output_file, emitted_code, code_size, org_data, data_size, &main_offset);
+    printf("Compilation successful. Machine code written to %s\n", output_file);
 
     //print_code(emitted_code, last_emitted - emitted_code, org_data, data - org_data);
     //print_symbols();
@@ -1773,7 +1853,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    compile_and_run(argv[1], argc, argv);
+    compile_and_run(0, argc, argv);
 
     return 0;
 }

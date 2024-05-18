@@ -31,3 +31,6 @@ include .depend
 
 demo: $(OUTPUT)
 	./$(OUTPUT) ./demo/main.c
+
+simple: $(OUTPUT)
+	./$(OUTPUT) ./demo/simple.c

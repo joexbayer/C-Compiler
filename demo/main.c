@@ -1,16 +1,13 @@
 #include "./demo/math.c"
 
-// Definition of struct math_operations
-struct math_operations {
+struct math_ops {
     int x;
     int y;
     int op; // Operator: '+', '-', '*', '/'
 };
+struct math_ops mo;
 
-struct math_operations mo;
-
-// Function to test passing struct pointers and performing math operations
-int perform_operations(struct math_operations* mo) {
+int perform(struct math_ops* mo) {
     int result;
     switch (mo->op) {
         case '+':
@@ -34,16 +31,30 @@ int perform_operations(struct math_operations* mo) {
     return result;
 }
 
-// Main function 
-int main() {
+int main(int argc, char** argv) {
+    struct math_ops mo1;
     int result;
-    struct math_operations mo1; // Variable of type struct math_operations
+    int i;
+
+    printf("Size of struct math_ops: %d\n", sizeof(struct math_ops));
 
     mo1.x = 10;
     mo1.y = 5;
+    
+    mo1.op = '*';
+    result = perform(&mo1);
+
+    mo1.op = '/';
+    mo1.x = 30;
+    mo1.y = 5;
+    result = perform(&mo1);
+
+    while (i < 10){
+        i++;
+        mo.x = i;
+    }
 
     mo.op = '+';
-    mo.x = 20;
     mo.y = 10;
 
     printf("Initial values: x = %d, y = %d\n", mo.x, mo.y);
@@ -52,19 +63,10 @@ int main() {
     } else {
         printf("mo.x is not 20\n");
     }
-    
-    mo1.op = '*';
-    result = perform_operations(&mo1);
-
-    mo1.op = '/';
-    mo1.x = 30;
-    mo1.y = 5;
-    result = perform_operations(&mo1);
-
     printf("Final operation: %c\n", mo.op);
-    result = perform_operations(&mo);
+    result = perform(&mo);
 
-    printf("Hello, World! Final result: %d\n", result);
+    printf("Final result: %d\n", result);
 
     return 0;
 }
