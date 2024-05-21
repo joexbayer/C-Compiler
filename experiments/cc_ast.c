@@ -186,7 +186,9 @@ void generate_x86_asm(struct ASTNode *node) {
                 printf("sub esp, %d\n", node->value);
             break;
         case AST_LEAVE:
-            printf("add esp, %d\n", node->value);
+            printf("mov esp, ebp\n");
+            printf("pop ebp\n");
+            printf("ret\n");
             break;
         case AST_NUM:
             printf("mov eax, %d\n", node->value);
@@ -196,7 +198,13 @@ void generate_x86_asm(struct ASTNode *node) {
             break;
         case AST_ASSIGN:
             generate_x86_asm(node->right);
-            printf("mov [%.*s], eax\n", node->left->ident->name_length, node->left->ident->name);
+            if (node->left->type == AST_MEMBER_ACCESS) {
+                printf("mov ebx, eax // Save eax\n");
+                generate_x86_asm(node->left->left);
+                printf("mov [ebx + %d], eax\n", node->left->member->offset);
+            } else {
+                printf("mov [%.*s], eax\n", node->left->ident->name_length, node->left->ident->name);
+            }
             break;
         case AST_FUNCALL:
             if (node->left) {
@@ -211,6 +219,8 @@ void generate_x86_asm(struct ASTNode *node) {
             break;
         case AST_RETURN:
             generate_x86_asm(node->left);
+            printf("mov esp, ebp\n");
+            printf("pop ebp\n");
             printf("ret\n");
             break;
         case AST_IF:
@@ -267,7 +277,9 @@ void generate_x86_asm(struct ASTNode *node) {
             }
             break;
         case AST_MEMBER_ACCESS:
-            printf("mov eax, [%.*s + %d]\n", node->ident->name_length, node->ident->name, node->member->offset);
+            generate_x86_asm(node->left);
+            printf("add eax, %d\n", node->member->offset);
+            printf("mov eax, [eax]\n");
             break;
         case AST_UNOP:
             generate_x86_asm(node->left);
@@ -286,11 +298,11 @@ void generate_x86_asm(struct ASTNode *node) {
             printf("Unknown AST node type\n");
             break;
     }
+
     /* Recursively generate code for the next node */
-    if (node->next != 0){
-        generate_x86_asm(node->next);
-    }
+    generate_x86_asm(node->next);
 }
+
 
 static void include(char *file) {
     int fd, len;

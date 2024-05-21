@@ -6,7 +6,7 @@ struct person {
     int age;
 };
 
-struct person p;
+struct person person;
 
 int add(int a, int b) {
     return a + b;
@@ -15,8 +15,10 @@ int add(int a, int b) {
 int main() {
     int a;
 
-    p.salary = 1000;
-    p.age = 30;
+    person.salary = 1000;
+    person.age = 30;
+
+    a = add(person.salary, person.age);
 
     return 0;
 }
