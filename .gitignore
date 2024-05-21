@@ -4,3 +4,7 @@
 bin/*
 cc
 a.out
+output.asm
+exp
+ast
+.vscode

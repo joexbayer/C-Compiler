@@ -36,8 +36,6 @@ int main(int argc, char** argv) {
     int result;
     int i;
 
-    printf("Size of struct math_ops: %d\n", sizeof(struct math_ops));
-
     mo1.x = 10;
     mo1.y = 5;
     

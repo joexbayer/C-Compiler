@@ -34,3 +34,7 @@ demo: $(OUTPUT)
 
 simple: $(OUTPUT)
 	./$(OUTPUT) ./demo/simple.c
+
+experiment:
+	gcc -m32 -o exp experiments/cc_ast.c io.c -g
+	./exp ./demo/simple.c
