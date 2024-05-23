@@ -502,6 +502,7 @@ static void expression(int level) {
                     /* Local variable */
                     *++last_emitted = LEA;
                     *++last_emitted = local_offset - id->val;
+                    printf("Local offset: %d\n", local_offset - id->val);
                 } else if(id->class == Glo){
                     /* Global variable */
                     *++last_emitted = IMD;
@@ -510,7 +511,8 @@ static void expression(int level) {
                     printf("%d: undefined variable\n", line);
                     exit(-1);
                 }
-
+                
+                printf("Type: %d\n", id->type);
                 if ((type = id->type) <= INT || type >= PTR){
                     *++last_emitted = (type == CHAR) ? LC : LI;
 
@@ -1456,9 +1458,9 @@ int parse(){
                         last_identifier->type = ty;
                         last_identifier->class = Loc;
                         /* Allocate space based on size */
-                        last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]);
-                        i = last_identifier->val;   
-
+                        i = i + (ty >= PTR ? sizeof(int) : type_size[ty]);
+                        last_identifier->val = i;
+                           
                         next();
                         if (token == ',') {
                             next();
@@ -1529,7 +1531,7 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
         i = *pc++;
         ++cycle;
         
-        if (0) {
+        if (1) {
             printf("%d> %.4s", cycle, &opcodes[i * 5]);
             if (i <= ADJ)
                 printf(" %d\n", *pc);
@@ -1733,6 +1735,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
         exit(-1);
     }
 
+    printf("PC = %p, %p\n", pc, emitted_code);
     
     --argc; ++argv;
 
