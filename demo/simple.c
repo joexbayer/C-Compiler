@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 struct math {
     int b;
     int c;
@@ -5,25 +7,25 @@ struct math {
 };
 
 int add(int a, int b) {
-    return a + b;
+    int r;
+
+    r = a + b + 10;
+
+    return r;
 }
 
-struct math m;
+int perform() {
+    int result;
+
+    result = add(1, 2);
+
+    return result;
+}
 
 int main() {
-    
+    int a;
 
-    m.a = add(10, 10);
+    a = perform();
 
-    if(m.a == 10) {
-        printf("m.a is 10\n");
-    } else if (m.a == 20) {
-        printf("m.a is 20\n");
-    } else {
-        printf("m.a is neither 10 nor 20\n");
-    }
-
-    printf("Value of a: %d\n", m.a);
-
-    return 0;
+    return a;
 }

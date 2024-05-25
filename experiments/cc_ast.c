@@ -110,6 +110,15 @@ struct identifier {
 static struct identifier *sym_table;
 static struct identifier *last_identifier = {0};
 
+#define MAX_FUNCTIONS 256
+struct function {
+    int id;
+    char name[25];
+    int* entry;
+};
+struct function function_table[MAX_FUNCTIONS] = {0};
+static int function_id = 0;
+
 struct member {
     struct identifier *ident;
     struct member *next;
@@ -166,6 +175,14 @@ static struct ASTNode *expression(int level);
 static struct ASTNode *statement();
 static void include(char *file);
 
+int free_ast(struct ASTNode *node) {
+    if (!node) return 0;
+    free_ast(node->left);
+    free_ast(node->right);
+    free(node);
+    return 0;
+}
+
 int dbgprintf(const char *fmt, ...){
 #ifdef DEBUG
     va_list args;
@@ -176,127 +193,253 @@ int dbgprintf(const char *fmt, ...){
     return 0;
 }
 
-/* void generate_x86_asm(struct ASTNode *node) {
+void generate_x86(struct ASTNode *node) {
     if (!node) return;
 
     switch (node->type) {
-        case AST_ENTER:
-            printf("push %%ebp\n");
-            printf("mov %%ebp, %%esp\n");
-            if (node->value > 0)
-                printf("sub %%esp, %d\n", node->value);
-            break;
-        case AST_LEAVE:
-            printf("mov %%esp, %%ebp\n");
-            printf("pop %%ebp\n");
-            printf("ret\n");
-            break;
         case AST_NUM:
-            printf("mov $%d, %%eax\n", node->value);
-            break;
+            printf("movl $%d, %%eax\n", node->value);
+            return;
+        case AST_STR:
+            printf("movl $%d, %%eax\n", node->value - (int)org_data);
+            return;
         case AST_IDENT:
-            printf("mov %.*s(%%eip), %%eax\n", node->ident->name_length, node->ident->name);
-            break;
-        case AST_ASSIGN:
-            generate_x86_asm(node->right);
-            printf("mov %%eax, %.*s(%%eip)\n", node->left->ident->name_length, node->left->ident->name);
-            break;
-        case AST_FUNCALL:
-            if (node->left) {
-                struct ASTNode *arg = node->left;
-                while (arg) {
-                    generate_x86_asm(arg);
-                    printf("push %%eax\n");
-                    arg = arg->next;
-                }
+
+            /* Optimization: use movl directly instead of leal and movl */
+            if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)){
+                printf("movl %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
+                return;
             }
-            printf("call %.*s\n", node->ident->name_length, node->ident->name);
-            break;
-        case AST_RETURN:
-            generate_x86_asm(node->left);
-            printf("mov %%esp, %%ebp\n");
-            printf("pop %%ebp\n");
-            printf("ret\n");
-            break;
-        case AST_IF:
-            generate_x86_asm(node->left);
-            printf("cmp $0, %%eax\n");
-            printf("je else_label\n");
-            generate_x86_asm(node->right->left);
-            printf("jmp endif_label\n");
-            printf("else_label:\n");
-            generate_x86_asm(node->right->right);
-            printf("endif_label:\n");
-            break;
-        case AST_WHILE:
-            printf("while_label:\n");
-            generate_x86_asm(node->left);
-            printf("cmp $0, %%eax\n");
-            printf("je endwhile_label\n");
-            generate_x86_asm(node->right);
-            printf("jmp while_label\n");
-            printf("endwhile_label:\n");
-            break;
-        case AST_BLOCK:
-            generate_x86_asm(node->left);
-            struct ASTNode *current = node->left;
-            while (current->next) {
-                generate_x86_asm(current->next);
-                current = current->next;
+
+            if (node->ident.class == Loc) {
+                printf("leal %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
+            } else if (node->ident.class == Glo) {
+                printf("movl $%d, %%eax\n", node->ident.val - (int)org_data);
+            } else {
+                printf("Unknown identifier class\n");
+                exit(-1);
             }
-            break;
-        case AST_EXPR_STMT:
-            generate_x86_asm(node->left);
-            break;
+
+            /* Load value if it's not a pointer type */
+            if (node->ident.type <= INT || node->ident.type >= PTR) {
+                printf("%s (%%eax), %%eax\n", (node->ident.type == CHAR) ? "movzb" : "movl");
+            }
+            return;
         case AST_BINOP:
-            generate_x86_asm(node->left);
-            printf("push %%eax\n");
-            generate_x86_asm(node->right);
-            printf("pop %%ebx\n");
+            /**
+             * First the address of the left operand is pushed onto the stack,
+             * then the right operand is evaluated and the result is stored in %eax.
+             * The left operand is then popped into %ebx and the operation is performed. 
+             */
+            generate_x86(node->left);
+            printf("pushl %%eax\n");
+            generate_x86(node->right);
+            printf("popl %%ebx\n");
             switch (node->value) {
-                case Add:
-                    printf("add %%ebx, %%eax\n");
+                case Add: printf("addl %%ebx, %%eax\n"); break;
+                case Sub: printf("subl %%ebx, %%eax\n"); break;
+                case Mul: printf("imull %%ebx, %%eax\n"); break;
+                case Div: 
+                    printf("movl $0, %%edx\n");
+                    printf("idivl %%ebx\n"); 
                     break;
-                case Sub:
-                    printf("sub %%ebx, %%eax\n");
-                    break;
-                case Mul:
-                    printf("imul %%ebx, %%eax\n");
-                    break;
-                case Div:
-                    printf("idiv %%ebx\n");
-                    break;
+                case Eq: printf("cmpl %%ebx, %%eax\nsete %%al\nmovzb %%al, %%eax\n"); break;
+                case Ne: printf("cmpl %%ebx, %%eax\nsetne %%al\nmovzb %%al, %%eax\n"); break;
+                case Lt: printf("cmpl %%ebx, %%eax\nsetl %%al\nmovzb %%al, %%eax\n"); break;
+                case Le: printf("cmpl %%ebx, %%eax\nsetle %%al\nmovzb %%al, %%eax\n"); break;
+                case Gt: printf("cmpl %%ebx, %%eax\nsetg %%al\nmovzb %%al, %%eax\n"); break;
+                case Ge: printf("cmpl %%ebx, %%eax\nsetge %%al\nmovzb %%al, %%eax\n"); break;
                 default:
-                    printf("Unknown binary operator\n");
-                    break;
+                    printf("Unknown binary operator %d\n", node->value);
+                    exit(-1);
             }
-            break;
-        case AST_MEMBER_ACCESS:
-            generate_x86_asm(node->left);
-            printf("add $%d, %%eax\n", node->member->offset);
-            printf("mov (%%eax), %%eax\n");
             break;
         case AST_UNOP:
-            generate_x86_asm(node->left);
+            generate_x86(node->left);
             switch (node->value) {
-                case Ne:
-                    printf("cmp $0, %%eax\n");
+                case '!':
+                    printf("cmpl $0, %%eax\n");
                     printf("sete %%al\n");
-                    printf("movzbl %%al, %%eax\n");
+                    printf("movzb %%al, %%eax\n");
                     break;
                 default:
                     printf("Unknown unary operator\n");
-                    break;
+                    exit(-1);
             }
             break;
-        default:
-            printf("Unknown AST node type\n");
+        case AST_FUNCALL:
+            /* Collect arguments in a list to push them in reverse order */
+            if (node->left) {
+                struct ASTNode *args[16];
+                int arg_count = 0;
+                struct ASTNode *arg = node->left;
+                while (arg) {
+                    if (arg_count >= 16) {
+                        printf("Too many arguments for function call\n");
+                        exit(-1);
+                    }
+                    args[arg_count++] = arg;
+                    arg = arg->next;
+                }
+                for (int i = arg_count - 1; i >= 0; i--) {
+                    arg = args[i];
+                    generate_x86(arg);
+                    printf("pushl %%eax\n");
+                }
+            }
+
+            if (node->ident.class == Sys) {
+                printf("call _syscall_%d\n", node->ident.val);
+            } else if (node->ident.class == Fun) {
+                printf("call %.*s\n", node->ident.name_length, node->ident.name);
+            } else {
+                printf("Unknown function call\n");
+                exit(-1);
+            }
+            if (node->left) {
+                int arg_count = 0;
+                struct ASTNode *arg = node->left;
+                while (arg) {
+                    arg_count++;
+                    arg = arg->next;
+                }
+                if (arg_count > 0) {
+                    printf("addl $%d, %%esp\n", arg_count * 4);
+                }
+            }
             break;
+        case AST_RETURN:
+            if (node->left) {
+                generate_x86(node->left);
+            }
+            /* leave and ret is done by AST_LEAVE */
+            break;
+        case AST_IF: {
+            generate_x86(node->left);
+            printf("cmpl $0, %%eax\n");
+            printf("je .Lfalse\n");
+            generate_x86(node->right->left);
+            if (node->right->right) {
+                printf("jmp .Lend\n");
+                printf(".Lfalse:\n");
+                generate_x86(node->right->right);
+                printf(".Lend:\n");
+            } else {
+                printf(".Lfalse:\n");
+            }
+            break;
+        }
+        case AST_WHILE: {
+            printf(".Lstart:\n");
+            generate_x86(node->left);
+            printf("cmpl $0, %%eax\n");
+            printf("je .Lend\n");
+            generate_x86(node->right);
+            printf("jmp .Lstart\n");
+            printf(".Lend:\n");
+            break;
+        }
+        case AST_BLOCK:
+            generate_x86(node->left);
+            return;
+        case AST_EXPR_STMT:
+            generate_x86(node->left);
+            break;
+        case AST_ASSIGN:
+            if (node->left->type == AST_IDENT) {
+                if (node->left->ident.class == Loc) {
+                    printf("leal %d(%%ebp), %%eax\n", node->left->value);
+                } else if (node->left->ident.class == Glo) {
+                    printf("movl $%d, %%eax\n", node->left->ident.val - (int)org_data);
+                }
+                printf("pushl %%eax\n");
+            } else if (node->left->type == AST_MEMBER_ACCESS) {
+                generate_x86(node->left->left);
+                printf("pushl %%eax\n");
+                printf("movl $%d, %%eax\n", node->left->member->offset);
+                printf("addl (%%esp), %%eax\n");
+                printf("movl %%eax, (%%esp)\n");
+            } else {
+                printf("Left-hand side of assignment must be an identifier or member access\n");
+                exit(-1);
+            }
+            generate_x86(node->right);
+            printf("popl %%ebx\n");
+            printf("movl %%eax, (%%ebx)\n");
+            break;
+        case AST_MEMBER_ACCESS:
+            generate_x86(node->left);
+            printf("movl %d(%%eax), %%eax\n", node->member->offset);
+            break;
+        case AST_DEREF:
+            generate_x86(node->left);
+            printf("movl (%%eax), %%eax\n");
+            break;
+        case AST_ADDR:
+            generate_x86(node->left);
+            break;
+        case AST_ENTER:
+            printf("%.*s:\n", node->ident.name_length, node->ident.name);
+            printf("pushl %%ebp\n");
+            printf("movl %%esp, %%ebp\n");
+            printf("subl $%d, %%esp\n", node->value);
+            break;
+        case AST_LEAVE:
+            printf("addl $%d, %%esp\n", node->value);
+            printf("popl %%ebp\n");
+            printf("ret\n\n");
+            break;
+        default:
+            printf("Unknown AST node type: %d\n", node->type);
+            exit(-1);
     }
 
-    /* Recursively generate code for the next node
-    generate_x86_asm(node->next);
-} */
+    if (node->next) {
+        generate_x86(node->next);
+    }
+}
+
+int add_function(int id, char* name, int name_length, int* entry)
+{
+    if(function_id >= MAX_FUNCTIONS){
+        printf("Maximum number of functions reached\n");
+        exit(-1);
+    }
+
+    struct function *f = function_table + id;
+    f->id = id;
+    memcpy(f->name, name, name_length);
+    
+    /* Null-terminate the name */
+    f->name[name_length] = '\0';
+
+    f->entry = entry;
+
+    return id;
+}
+
+struct function *find_function_name(char *name, int name_length)
+{
+    struct function *f = function_table;
+    while (f->id) {
+        if (strncmp(f->name, name, name_length) == 0) {
+            return f;
+        }
+        f++;
+    }
+    return NULL;
+}
+
+struct function *find_function_id(int id){
+    struct function *f = function_table;
+    while (f) {
+        if (f->id == id) {
+            return f;
+        }
+        f++;
+    }
+    return NULL;
+}
 
 /**
  * @brief Generate bytecode from the AST
@@ -316,18 +459,29 @@ void generate_bytecode(struct ASTNode *node) {
             *++last_emitted = node->value - (int)org_data;
             return;
         case AST_IDENT:
-            printf("%d\n", node->ident.class);
             if (node->ident.class == Loc) {
+                /**
+                 * Load a local variable,
+                 * node->value is either positive (arguments)
+                 * or negativ (stack allocated).
+                 */
+
                 *++last_emitted = LEA;
                 *++last_emitted = node->value;
             } else if (node->ident.class == Glo) {
+                /**
+                 * Load a global variable,
+                 * node->ident.val is the offset from the data segment.
+                 */
+
                 *++last_emitted = IMD;
                 *++last_emitted = node->ident.val - (int)org_data;
             } else {
                 printf("Unknown identifier class\n");
                 exit(-1);
             }
-            // Load value if it's not a pointer type
+
+            /* We load value if it's not a pointer type */
             if (node->ident.type <= INT || node->ident.type >= PTR) {
                 *++last_emitted = (node->ident.type == CHAR) ? LC : LI;
             }
@@ -337,51 +491,21 @@ void generate_bytecode(struct ASTNode *node) {
             *++last_emitted = PSH;
             generate_bytecode(node->right);
             switch (node->value) {
-                case Add:
-                    *++last_emitted = ADD;
-                    break;
-                case Sub:
-                    *++last_emitted = SUB;
-                    break;
-                case Mul:
-                    *++last_emitted = MUL;
-                    break;
-                case Div:
-                    *++last_emitted = DIV;
-                    break;
-                case Eq:
-                    *++last_emitted = EQ;
-                    break;
-                case Ne:
-                    *++last_emitted = NE;
-                    break;
-                case Lt:
-                    *++last_emitted = LT;
-                    break;
-                case Le:
-                    *++last_emitted = LE;
-                    break;
-                case Gt:
-                    *++last_emitted = GT;
-                    break;
-                case Ge:
-                    *++last_emitted = GE;
-                    break;
-                case And:
-                    *++last_emitted = AND;
-                    break;
-                case Or:
-                    *++last_emitted = OR;
-                    break;
-                case Xor:
-                    *++last_emitted = XOR;
-                    break;
-                case Shl:
-                    *++last_emitted = SHL;
-                    break;
-                case Shr:
-                    *++last_emitted = SHR;
-                    break;
+                case Add: *++last_emitted = ADD; break;
+                case Sub: *++last_emitted = SUB; break;
+                case Mul: *++last_emitted = MUL; break;
+                case Div: *++last_emitted = DIV; break;
+                case Eq:  *++last_emitted = EQ;  break;
+                case Ne:  *++last_emitted = NE;  break;
+                case Lt:  *++last_emitted = LT;  break;
+                case Le:  *++last_emitted = LE;  break;
+                case Gt:  *++last_emitted = GT;  break;
+                case Ge:  *++last_emitted = GE;  break;
+                case And: *++last_emitted = AND; break;
+                case Or:  *++last_emitted = OR;  break;
+                case Xor: *++last_emitted = XOR; break;
+                case Shl: *++last_emitted = SHL; break;
+                case Shr: *++last_emitted = SHR; break;
                 default:
                     printf("Unknown binary operator %d\n", node->value);
                     exit(-1);
@@ -402,8 +526,9 @@ void generate_bytecode(struct ASTNode *node) {
             }
             break;
         case AST_FUNCALL:
+            // Collect arguments in a list to push them in reverse order
             if (node->left) {
-                // Collect arguments in a list to push them in reverse order
+
                 struct ASTNode *args[16]; // assuming a max of 16 args for simplicity
                 int arg_count = 0;
                 struct ASTNode *arg = node->left;
@@ -432,12 +557,20 @@ void generate_bytecode(struct ASTNode *node) {
                     *++last_emitted = PSH;
                 }
             }
+
+            // Function call.
             if (node->ident.class == Sys) {
                 *++last_emitted = node->ident.val;
             } else if (node->ident.class == Fun) {
                 *++last_emitted = JSR;
-                printf("Ident val: %d\n", node->ident.val);
-                *++last_emitted = node->ident.val - (int)emitted_code;
+                
+                struct function *f = find_function_id(node->ident.val);
+                if (!f || !f->entry) {
+                    printf("Function %.*s not found in JSR\n", node->ident.name_length, node->ident.name);
+                    exit(-1);
+                }
+                *++last_emitted = (int)f->entry - (int)emitted_code;
+
             } else {
                 printf("Unknown function call\n");
                 exit(-1);
@@ -477,7 +610,6 @@ void generate_bytecode(struct ASTNode *node) {
         }
         case AST_WHILE: {
             int *start = last_emitted + 1;
-            printf("Start: %d\n", start);
             generate_bytecode(node->left);
             *++last_emitted = BZ;
             int *end = ++last_emitted;
@@ -499,7 +631,7 @@ void generate_bytecode(struct ASTNode *node) {
             if (node->left->type == AST_IDENT) {
                 if (node->left->ident.class == Loc) {
                     *++last_emitted = LEA;
-                    *++last_emitted = local_offset - node->left->ident.val;
+                    *++last_emitted = node->left->value;
                 } else if (node->left->ident.class == Glo) {
                     *++last_emitted = IMD;
                     *++last_emitted = node->left->ident.val - (int)org_data;
@@ -520,11 +652,12 @@ void generate_bytecode(struct ASTNode *node) {
             *++last_emitted = (node->left->data_type == CHAR) ? SC : SI;
             break;
         case AST_MEMBER_ACCESS: {
-            generate_bytecode(node->left); // Load the address of the base identifier
-            *++last_emitted = PSH; // Push the base address
-            *++last_emitted = IMM; // Load the offset of the member
+            generate_bytecode(node->left); /* Load the address of the base identifier */
+            *++last_emitted = PSH; 
+            *++last_emitted = IMM; 
             *++last_emitted = node->member->offset;
-            *++last_emitted = ADD; // Add the base address and the offset to get the member address
+            *++last_emitted = ADD;
+
             // Load value if it's not a pointer type
             if (node->data_type <= INT || node->data_type >= PTR) {
                 *++last_emitted = (node->data_type == CHAR) ? LC : LI;
@@ -545,6 +678,13 @@ void generate_bytecode(struct ASTNode *node) {
             break;
         case AST_ENTER:
             *++last_emitted = ENT;
+
+            struct function *f = find_function_id(node->ident.val);
+            if (!f) {
+                printf("Function %.*s not found\n", node->ident.name_length, node->ident.name);
+                exit(-1);
+            }
+            f->entry = last_emitted;
             entry = last_emitted;
             *++last_emitted = node->value;
             break;
@@ -561,13 +701,8 @@ void generate_bytecode(struct ASTNode *node) {
     }
 }
 
-
-
-
-
 static void include(char *file) {
     int fd, len;
-    dbgprintf("Including file: %s\n", file);
 
     /* Store the current parsing state */
     original_position = current_position + 1;
@@ -693,6 +828,9 @@ static void next() {
                             len = current_position - start;
                             strncpy(include_file, start, len);
                             include_file[len] = '\0';
+
+
+                            printf("Including file: %s\n", include_file);
 
                             include(include_file);
                         }
@@ -914,13 +1052,11 @@ static struct ASTNode *expression(int level) {
             node = malloc(sizeof(struct ASTNode));
             node->type = AST_IDENT;
             node->ident = *id;
-            printf("Ident: %p\n", node->ident);
             node->data_type = id->type;
-            printf("Data type: %d\n", node->data_type);
 
             if(id->class == Loc){
                 node->value = local_offset - id->val;
-                printf("Local offset: %d\n", node->value);
+                dbgprintf("%.*s> Local offset: %d (%d - %d)\n", node->ident.name_length, node->ident.name, node->value, local_offset, id->val);
             } else if(id->class == Glo){
                 node->value = id->val - (int)org_data;
             } else {
@@ -1556,15 +1692,17 @@ void print_code(int *code, size_t code_size, char *data, size_t data_size) {
         }
     }
 }
+struct ASTNode *root = NULL;
+struct ASTNode *current = NULL;
+
 struct ASTNode* parse() {
     int i;
     int bt;
     int ty;
     int mbt;
     struct member *m;
+    struct identifier* func;
 
-    struct ASTNode *root = NULL;
-    struct ASTNode *current = NULL;
 
     while(token) {
         bt = INT;
@@ -1698,7 +1836,11 @@ struct ASTNode* parse() {
             /* Check for function */
             if(token == '(') {
                 last_identifier->class = Fun;
-                last_identifier->val = (int) (last_emitted + 1);
+                last_identifier->val = function_id++;
+                add_function(last_identifier->val, last_identifier->name, last_identifier->name_length, NULL);
+
+                func = last_identifier;
+
                 next();
 
                 i = 0;
@@ -1745,6 +1887,7 @@ struct ASTNode* parse() {
                     if(token == ',') next();
                 }
                 next();
+
 
                 if(token != '{') {
                     printf("%d: bad function definition\n", line);
@@ -1799,7 +1942,8 @@ struct ASTNode* parse() {
                 
                 struct ASTNode *enter_node = malloc(sizeof(struct ASTNode));
                 enter_node->type = AST_ENTER;
-                enter_node->value = i - local_offset;
+                enter_node->value = (i - local_offset);
+                enter_node->ident = *func;
                 enter_node->left = NULL;
                 enter_node->right = NULL;
                 enter_node->next = NULL;
@@ -1819,6 +1963,8 @@ struct ASTNode* parse() {
 
                 struct ASTNode *leave_node = malloc(sizeof(struct ASTNode));
                 leave_node->type = AST_LEAVE;
+                leave_node->value = i - local_offset;
+                leave_node->ident = *func;
                 leave_node->left = NULL;
                 leave_node->right = NULL;
                 leave_node->next = NULL;
@@ -1847,8 +1993,6 @@ struct ASTNode* parse() {
     }
     return root;
 }
-
-
 
 void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[]) {
     int a, cycle = 0;
@@ -2081,6 +2225,8 @@ void compile_and_run(char* filename, int argc, char *argv[]){
 
     main_identifier->val = (int)entry;
 
+    generate_x86(ast_root);
+
     struct timespec end_time;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
     long diffInNanos = (end_time.tv_sec - start_time.tv_sec) * (long)1e9 + (end_time.tv_nsec - start_time.tv_nsec);
@@ -2102,6 +2248,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
         printf("argv[%d] = %s\n", i, argv[i]);
     }
 
+
     run_virtual_machine(pc, emitted_code, org_data, argc, argv);
     printf("Compilation time: %ld ns\n", diffInNanos);
 
@@ -2110,7 +2257,6 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     int main_offset = (int)(main_identifier->val - (int)emitted_code);
     write_bytecode(output_file, emitted_code, code_size, org_data, data_size, &main_offset);
     printf("Compilation successful. Machine code written to %s\n", output_file);
-
     //print_code(emitted_code, last_emitted - emitted_code, org_data, data - org_data);
     //print_symbols();
 
@@ -2139,7 +2285,7 @@ void print_ast_node(struct ASTNode *node, int indent_level) {
             printf("STR: %d\n", node->value);
             break;
         case AST_IDENT:
-            printf("IDENT: %.*s (%s) 0x%x - %d\n", node->ident.name_length, node->ident.name, node->ident.class == Loc ? "Loc" : "Glo", node->ident.val, node->data_type);
+            printf("IDENT: %.*s (%d)\n", node->ident.name_length, node->ident.name, node->value);
             break;
         case AST_BINOP:
             printf("BINOP: %d\n", node->value);
@@ -2196,7 +2342,7 @@ void print_ast_node(struct ASTNode *node, int indent_level) {
             printf("ADDR\n");
             break;
         case AST_ENTER:
-            printf("ENTER 0x%x\n", node->value);
+            printf("ENTER 0x%x (%.*s)\n", node->value, node->ident.name_length, node->ident.name);
             break;
         case AST_LEAVE:
             printf("LEAVE\n");
@@ -2206,7 +2352,7 @@ void print_ast_node(struct ASTNode *node, int indent_level) {
             break;
     }
 
-    // Recursively print the children nodes with increased indentation
+
     if (node->left) {
         print_ast_node(node->left, indent_level + 1);
     }
@@ -2242,6 +2388,8 @@ int main(int argc, char *argv[]) {
     }
 
     compile_and_run(0, argc, argv);
+
+    free_ast(ast_root);
 
     return 0;
 }

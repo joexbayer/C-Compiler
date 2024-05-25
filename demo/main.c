@@ -1,4 +1,4 @@
-
+#include "./demo/math.c"
 
 struct math_ops {
     int x;
@@ -6,21 +6,22 @@ struct math_ops {
     int op; // Operator: '+', '-', '*', '/'
 };
 
-int h(){
-    printf("Hello\n");
-}
 
-int add(int a, int b) {
-    printf("Adding %d and %d\n", a, b);
-    return a + b;
-}
-
-int perform() {
+int perform(struct math_ops* mo) {
     int result;
 
-    result = 10;
-    
-    printf("Result of addition: %d\n", result);
+    if (mo->op == '+') {
+        result = add(mo->x, mo->y);
+    } else if (mo->op == '-') {
+        result = sub(mo->x, mo->y);
+    } else if (mo->op == '*') {
+        result = mul(mo->x, mo->y);
+    } else if (mo->op == '/') {
+        result = div(mo->x, mo->y);
+    } else {
+        result = 0;
+    }
+
     return result;
 }
 
@@ -32,14 +33,19 @@ int main(int argc, char** argv) {
 
     mo1.x = 10;
     mo1.y = 5;
+
+    printf("Value of x: %d\n", mo1.x);
+    printf("Value of y: %d\n", mo1.y);
     
     mo1.op = '*';
-    result = perform();
+    result = perform(&mo1); 
+    printf("Final result: %d\n", result);
 
     mo1.op = '/';
     mo1.x = 30;
     mo1.y = 5;
-    result = perform();
+    result = perform(&mo1);
+    printf("Final result: %d\n", result);
 
     while (i < 10){
         i = i + 1;
@@ -47,7 +53,7 @@ int main(int argc, char** argv) {
     }
 
 
-    result = perform();
+    result = perform(&mo1);
 
     printf("Final result: %d\n", result);
 
