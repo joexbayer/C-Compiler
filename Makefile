@@ -1,8 +1,9 @@
 # Makefile to compile and build cc.c
 CCFLAGS = -Wall -g -m32
 LDFLAGS = 
-LD = ld
-CC = gcc
+LD = ld -m elf_i386
+CC = gcc 
+AS = as --32
 MAKEFLAGS += --no-print-directory
 
 OUTPUT = cc
@@ -38,3 +39,12 @@ simple: $(OUTPUT)
 experiment:
 	gcc -m32 -o exp experiments/cc_ast.c io.c -g
 	./exp ./demo/simple.c
+
+assembly:
+	$(AS) -o a.o a.s
+	$(LD) -o a a.o -lc -dynamic-linker /lib/ld-linux.so.2 -e _start -L/usr/lib -L/lib -l:libc.so.6
+	./a
+	echo $?
+
+asm:
+	gcc -S -m32 demo/simple.c

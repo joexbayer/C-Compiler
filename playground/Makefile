@@ -11,6 +11,8 @@ TARGET = hello
 
 # Default target to build the program
 all: $(TARGET)
+	./$(TARGET)
+	echo $?
 
 # Rule to assemble the .s file into an object file
 $(OBJ): $(SRC)

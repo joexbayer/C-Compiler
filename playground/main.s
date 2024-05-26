@@ -1,10 +1,3 @@
-.section .data
-msg:
-    .asciz "Result: %d\n"
-
-.section .text
-.globl _start
-.globl add
 add:
 pushl %ebp
 movl %esp, %ebp
@@ -46,16 +39,26 @@ addl $4, %esp
 popl %ebp
 ret
 
+main:
+pushl %ebp
+movl %esp, %ebp
+subl $4, %esp
+leal -4(%ebp), %eax
+pushl %eax
+call perform
+popl %ebx
+movl %eax, (%ebx)
+movl -4(%ebp), %eax
+addl $4, %esp
+popl %ebp
+ret
+
+.globl _start
 _start:
-   pushl %ebp
-    movl %esp, %ebp
-    subl $4, %esp
-    leal -4(%ebp), %eax
-    pushl %eax
-    call perform
-    popl %ebx
-    movl %eax, (%ebx)
-    movl -4(%ebp), %ebx
+
+    # Call main
+    call main
+    movl %eax, %ebx
 
     # Exit program
     movl $1, %eax       # syscall number (sys_exit)

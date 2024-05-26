@@ -1,9 +1,7 @@
-#include <stdio.h>
-
 struct math {
+    int a;
     int b;
     int c;
-    int a;
 };
 
 int add(int a, int b) {
@@ -15,11 +13,17 @@ int add(int a, int b) {
 }
 
 int perform() {
-    int result;
+    int a;
+    struct math m;
 
-    result = add(1, 2);
+    a = 20;
 
-    return result;
+    m.a = 6;
+    m.b = 10;
+
+    m.c = add(m.a, m.b);
+
+    return m.c;
 }
 
 int main() {
