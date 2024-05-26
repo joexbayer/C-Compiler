@@ -4,10 +4,10 @@ struct math {
     int c;
 };
 
-int add(int a, int b) {
+int add(int a, int b, int c) {
     int r;
 
-    r = a + b + 10;
+    r = a + b + c;
 
     return r;
 }
@@ -21,7 +21,7 @@ int perform() {
     m.a = 6;
     m.b = 10;
 
-    m.c = add(m.a, m.b);
+    m.c = add(m.a, m.b, a);
 
     return m.c;
 }

@@ -196,6 +196,8 @@ int dbgprintf(const char *fmt, ...){
 #include <stdio.h>
 #include <stdlib.h>
 
+#define ADJUST_SIZE(node) (node->value > 0 ? node->value*4 : node->value)
+
 void generate_x86(struct ASTNode *node, FILE *file) {
     if (!node) return;
 
@@ -274,21 +276,11 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             /* Collect arguments in a list to push them in reverse order */
             fprintf(file, "# Function call\n");
             if (node->left) {
-                struct ASTNode *args[16];
-                int arg_count = 0;
                 struct ASTNode *arg = node->left;
-                while (arg) {
-                    if (arg_count >= 16) {
-                        printf("Too many arguments for function call\n");
-                        exit(-1);
-                    }
-                    args[arg_count++] = arg;
-                    arg = arg->next;
-                }
-                for (int i = arg_count - 1; i >= 0; i--) {
-                    arg = args[i];
+                while(arg){
                     generate_x86(arg, file);
                     fprintf(file, "pushl %%eax\n");
+                    arg = arg->next;
                 }
             }
 
@@ -352,6 +344,35 @@ void generate_x86(struct ASTNode *node, FILE *file) {
         case AST_ASSIGN:
             fprintf(file, "# Assignment\n");
 
+            if(node->left->type != AST_IDENT && node->left->type != AST_MEMBER_ACCESS){
+                printf("Left-hand side of assignment must be an identifier or member access\n");
+                exit(-1);
+            }
+
+            if(node->right->type == AST_FUNCALL){
+                /** 
+                 * Optimization: If we know that right is a function, we know the result will be in %eax.
+                 * Therefor we can simple store the result in the left operand.
+                 */
+                generate_x86(node->right, file);
+                if(node->left->type == AST_IDENT){
+                    if(node->left->ident.class == Loc)
+                        fprintf(file, "movl %%eax, %d(%%ebp)\n", node->left->value);
+                    else if(node->left->ident.class == Glo)
+                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->ident.val - (int)org_data);
+                } else if(node->left->type == AST_MEMBER_ACCESS){
+                    if(node->left->left->ident.class == Loc)
+                        fprintf(file, "movl %%eax, %d(%%ebp)\n", ADJUST_SIZE(node->left->left) + node->left->member->offset);
+                    else if(node->left->left->ident.class == Glo)
+                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->left->ident.val - (int)org_data);
+                    else {
+                        printf("Unknown identifier class\n");
+                        exit(-1);
+                    }
+                }
+                return;
+            }
+
             if(node->right->type == AST_NUM){
                 /* Optimization: assign constant to variable */
                 if (node->left->type == AST_IDENT) {
@@ -361,19 +382,15 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)org_data);
                     }
                 } else if (node->left->type == AST_MEMBER_ACCESS) {
-                    printf("%d, %d, %d\n",  node->right->value, node->left->left->value, node->left->member->offset);
-                    fprintf(file, "movl $%d, %d(%%ebp)\n",
-                        node->right->value,
-                        (node->left->left->value > 0 ?
-                            node->left->left->value*4 :
-                            node->left->left->value)
-                        + node->left->member->offset
-                    );
-                } else {
-                    printf("Left-hand side of assignment must be an identifier or member access\n");
-                    exit(-1);
-                }
-                return;
+                    if(node->left->left->ident.class == Loc)
+                        fprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, ADJUST_SIZE(node->left->left) + node->left->member->offset);
+                    else if(node->left->left->ident.class == Glo)
+                        fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->left->ident.val - (int)org_data);               
+                    else {
+                        printf("Unknown identifier class\n");
+                        exit(-1);
+                    }
+                } 
             }
 
             /* Push the address of the left operand onto the stack */
@@ -385,14 +402,9 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 }
                 fprintf(file, "pushl %%eax\n");
             } else if (node->left->type == AST_MEMBER_ACCESS) {
-                generate_x86(node->left->left, file);
-                fprintf(file, "addl $%d, %%eax\n", node->left->member->offset);
+                fprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset );
                 fprintf(file, "pushl %%eax\n");
-            } else {
-                printf("Left-hand side of assignment must be an identifier or member access\n");
-                exit(-1);
             }
-
             /* Evaluate the right operand and store the result in %eax */
             generate_x86(node->right, file);
 
