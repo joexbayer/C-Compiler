@@ -198,6 +198,7 @@ int dbgprintf(const char *fmt, ...){
 
 #define ADJUST_SIZE(node) (node->value > 0 ? node->value*4 : node->value)
 
+int derefence = 0;
 void generate_x86(struct ASTNode *node, FILE *file) {
     if (!node) return;
 
@@ -209,7 +210,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             fprintf(file, "movl $%d, %%eax\n", node->value - (int)org_data);
             return;
         case AST_IDENT:
-
             /* Optimization: use movl directly instead of leal and movl */
             if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)){
                 fprintf(file, "movl %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
@@ -276,11 +276,22 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             /* Collect arguments in a list to push them in reverse order */
             fprintf(file, "# Function call\n");
             if (node->left) {
+                struct ASTNode *args[16]; // assuming a max of 16 args for simplicity
+                int arg_count = 0;
                 struct ASTNode *arg = node->left;
-                while(arg){
+                while (arg) {
+                    if (arg_count >= 16) {
+                        printf("Too many arguments for function call\n");
+                        exit(-1);
+                    }
+                    args[arg_count++] = arg;
+                    arg = arg->next;
+                }
+                /* Push arguments in reverse order */
+                for (int i = arg_count - 1; i >= 0; i--) {
+                    arg = args[i];
                     generate_x86(arg, file);
                     fprintf(file, "pushl %%eax\n");
-                    arg = arg->next;
                 }
             }
 
@@ -342,13 +353,11 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             generate_x86(node->left, file);
             break;
         case AST_ASSIGN:
-            fprintf(file, "# Assignment\n");
 
-            if(node->left->type != AST_IDENT && node->left->type != AST_MEMBER_ACCESS){
+            if(node->left->type != AST_IDENT && node->left->type != AST_MEMBER_ACCESS && node->left->type != AST_DEREF && node->left->type != AST_ADDR){
                 printf("Left-hand side of assignment must be an identifier or member access\n");
                 exit(-1);
             }
-
             if(node->right->type == AST_FUNCALL){
                 /** 
                  * Optimization: If we know that right is a function, we know the result will be in %eax.
@@ -382,6 +391,14 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)org_data);
                     }
                 } else if (node->left->type == AST_MEMBER_ACCESS) {
+
+                    /* If the ident if a pointer, we need to adjust the code */
+                    if(node->left->left->ident.type >= PTR && node->left->left->ident.type < PTR2){
+                        fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
+                        fprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
+                        return;
+                    } 
+
                     if(node->left->left->ident.class == Loc)
                         fprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, ADJUST_SIZE(node->left->left) + node->left->member->offset);
                     else if(node->left->left->ident.class == Glo)
@@ -390,11 +407,24 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         printf("Unknown identifier class\n");
                         exit(-1);
                     }
-                } 
+                } else if(node->left->type == AST_DEREF){
+                    generate_x86(node->left->left, file);
+                    fprintf(file, "movl $%d, (%%eax)\n", node->right->value);
+                }
+                return; 
             }
 
             /* Push the address of the left operand onto the stack */
             if (node->left->type == AST_IDENT) {
+                
+                /* If the ident if a pointer, we need to adjust the code */
+                if(node->left->ident.type >= PTR && node->left->ident.type < PTR2){
+                    fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left));
+                    fprintf(file, "pushl %%eax\n");
+                    fprintf(file, "movl $%d, (%%eax)\n", node->right->value);
+                    return;
+                }
+
                 if (node->left->ident.class == Loc) {
                     fprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
                 } else if (node->left->ident.class == Glo) {
@@ -402,6 +432,13 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 }
                 fprintf(file, "pushl %%eax\n");
             } else if (node->left->type == AST_MEMBER_ACCESS) {
+                /* If the ident if a pointer, we need to adjust the code */
+                if(node->left->left->ident.type >= PTR && node->left->left->ident.type < PTR2){
+                    fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
+                    fprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
+                    return;
+                } 
+
                 fprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset );
                 fprintf(file, "pushl %%eax\n");
             }
@@ -417,12 +454,17 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             fprintf(file, "movl %d(%%eax), %%eax\n", node->member->offset);
             return;
         case AST_DEREF:
+            derefence = 1;
+            fprintf(file, "# Dereference\n");
             generate_x86(node->left, file);
             fprintf(file, "movl (%%eax), %%eax\n");
+            derefence = 0;
             break;
         case AST_ADDR:
-            generate_x86(node->left, file);
-            break;
+            fprintf(file, "# Dereference\n");
+            fprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
+            //generate_x86(node->left, file);
+            return;
         case AST_ENTER:
             fprintf(file, "%.*s:\n", node->ident.name_length, node->ident.name);
             fprintf(file, "# Setting up stack frame\n");
@@ -432,7 +474,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 fprintf(file, "subl $%d, %%esp\n", node->value);
             break;
         case AST_LEAVE:
-
             fprintf(file, "# Cleaning up stack frame\n");
             if(node->value > 0)
                 fprintf(file, "addl $%d, %%esp\n", node->value);
@@ -694,9 +735,11 @@ void generate_bytecode(struct ASTNode *node) {
                 *++last_emitted = node->left->member->offset;
                 *++last_emitted = ADD;
                 *++last_emitted = PSH;
+            } else if (node->left->type == AST_DEREF) {
+                generate_bytecode(node->left->left);
             } else {
                 printf("Left-hand side of assignment must be an identifier or member access\n");
-                exit(-1);
+                exit(-1);   
             }
             generate_bytecode(node->right);
             *++last_emitted = (node->left->data_type == CHAR) ? SC : SI;
@@ -719,13 +762,13 @@ void generate_bytecode(struct ASTNode *node) {
             if (node->data_type <= INT || node->data_type >= PTR) {
                 *++last_emitted = (node->data_type == CHAR) ? LC : LI;
             }
-            break;
+            return;
         case AST_ADDR:
             generate_bytecode(node->left);
             if (*last_emitted == LC || *last_emitted == LI) {
                 --last_emitted;
             }
-            break;
+            return;
         case AST_ENTER:
             *++last_emitted = ENT;
 
@@ -2118,7 +2161,7 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
         i = *pc++;
         ++cycle;
         
-        if (0) {
+        if (1) {
             printf("%d> %.4s", cycle, &opcodes[i * 5]);
             if (i <= ADJ)
                 printf(" %d\n", *pc);
@@ -2198,6 +2241,7 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
             }
             default: printf("cc: unknown instruction = %d! cycle = %d\n", i, cycle); goto vm_exit;
         }
+        printf("a = 0x%x\n", a);
     }
 vm_exit:
     ;
