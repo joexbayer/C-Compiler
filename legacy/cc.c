@@ -12,7 +12,7 @@
  * Rewritten and modified for RetrOS-32 by Joe Bayer
  */
 
-#include "cc.h"
+#include <cc..h>
 
 #define POOL_SIZE 128*1024
 #define MAX_MEMBERS 128

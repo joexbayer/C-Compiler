@@ -1,5 +1,4 @@
-# Makefile to compile and build cc.c
-CCFLAGS = -Wall -g -m32
+CCFLAGS = -Wall -g -m32 -Iinclude
 LDFLAGS = 
 LD = ld -m elf_i386
 CC = gcc 
@@ -8,15 +7,17 @@ MAKEFLAGS += --no-print-directory
 
 OUTPUT = cc
 
-SRC_FILES = $(wildcard *.c)
-OBJ_FILES = $(SRC_FILES:%.c=$(OUTPUTDIR)%.o)
+SRC_DIR = src
 OUTPUTDIR = ./bin/
+
+SRC_FILES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*/*.c)
+OBJ_FILES = $(SRC_FILES:$(SRC_DIR)/%.c=$(OUTPUTDIR)%.o)
 
 $(OUTPUT): $(OBJ_FILES)
 	$(CC) -o $@ $(OBJ_FILES) $(CCFLAGS)
 
-$(OUTPUTDIR)%.o: %.c
-	@mkdir -p $(OUTPUTDIR)
+$(OUTPUTDIR)%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(OUTPUTDIR) $(dir $@)
 	$(CC) $(CCFLAGS) -c $< -o $@
 
 clean:
@@ -37,7 +38,7 @@ simple: $(OUTPUT)
 	./$(OUTPUT) ./demo/simple.c
 
 experiment:
-	gcc -m32 -o exp experiments/cc_ast.c io.c -g
+	gcc -m32 -o exp ./experiments/cc_ast.c ./io.c -g
 	./exp ./demo/simple.c
 
 assembly:
@@ -54,4 +55,4 @@ bin2exe:
 	ld -m elf_i386 -o myfile myfile.o -T binary.ld
 
 asm:
-	gcc -S -m32 demo/simple.c
+	gcc -S -m32 ./demo/simple.c

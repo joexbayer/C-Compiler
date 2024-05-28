@@ -1,11 +1,11 @@
 
-#include "ast.h"
-#include "func.h"
+#include <ast.h>
+#include <func.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 
-static int* org_data = 0x08048000;
+static int* data_section = (int*)0x08048000;
 static uint8_t opcodes[256] = {0};
 static int opcodes_count = 0;
 
@@ -82,7 +82,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             GEN_X86_IMD_EAX(node->value);
             return;
         case AST_STR:
-            fprintf(file, "movl $%d, %%eax\n", node->value - (int)org_data);
+            fprintf(file, "movl $%d, %%eax\n", node->value - (int)data_section);
 
             printf("TBD: Implement string\n");
             exit(-1);
@@ -106,7 +106,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 opcodes[opcodes_count++] = node->value;
                 
             } else if (node->ident.class == Glo) {
-                fprintf(file, "movl $%d, %%eax\n", node->ident.val - (int)org_data);
+                fprintf(file, "movl $%d, %%eax\n", node->ident.val - (int)data_section);
 
                 
                 printf("TBD: Implement global variable\n");
@@ -238,9 +238,10 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     exit(-1);
                 }
 
-                fprintf(file, "call %.*s %d\n", node->ident.name_length, node->ident.name, f->entry);
-
-                GEN_X86_CALL(f->entry - (opcodes_count + 4));
+                fprintf(file, "call %.*s %d\n", node->ident.name_length, node->ident.name,-opcodes_count);
+        
+                int offset = (int)f->entry - opcodes_count;
+                GEN_X86_CALL(offset-5);
             } else {
                 printf("Unknown function call\n");
                 exit(-1);
@@ -326,8 +327,8 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = node->left->value;
                     }
                     else if(node->left->ident.class == Glo){
-                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->ident.val - (int)org_data);
-                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->ident.val - (int)org_data; opcodes_count += 4;
+                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->ident.val - (int)data_section);
+                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->ident.val - (int)data_section; opcodes_count += 4;
                     }
                 } else if(node->left->type == AST_MEMBER_ACCESS){
                     if(node->left->left->ident.class == Loc){
@@ -335,8 +336,8 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
                     }
                     else if(node->left->left->ident.class == Glo){
-                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->left->ident.val - (int)org_data);
-                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->left->ident.val - (int)org_data; opcodes_count += 4;
+                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->left->ident.val - (int)data_section);
+                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->left->ident.val - (int)data_section; opcodes_count += 4;
                     }
                     else {
                         printf("Unknown identifier class\n");
@@ -359,7 +360,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes_count += 4;
 
                     } else if (node->left->ident.class == Glo) {
-                        fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)org_data);
+                        fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)data_section);
                         printf("TBD: Implement global variable\n");
                         exit(-1);
                     }
@@ -391,7 +392,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes_count += 4;
                     }
                     else if(node->left->left->ident.class == Glo)
-                        fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->left->ident.val - (int)org_data);               
+                        fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->left->ident.val - (int)data_section);               
                     else {
                         printf("Unknown identifier class\n");
                         exit(-1);
@@ -436,7 +437,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
 
                 } else if (node->left->ident.class == Glo) {
-                    fprintf(file, "movl $%d, %%eax\n", node->left->ident.val - (int)org_data);
+                    fprintf(file, "movl $%d, %%eax\n", node->left->ident.val - (int)data_section);
                 }
                 fprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
@@ -500,7 +501,8 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
             /* Pop the address of the left operand into %ebx and perform the assignment */
             fprintf(file, "popl %%ebx\n");
-            opcodes[opcodes_count++] = 0x5b;
+            GEN_X86_POP_EBX();
+
             fprintf(file, "movl %%eax, (%%ebx)\n");
             opcodes[opcodes_count++] = 0x89;
             opcodes[opcodes_count++] = 0x03;
@@ -532,7 +534,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             return;
         case AST_ENTER:
             fprintf(file, "%.*s:\n", node->ident.name_length, node->ident.name);
-            fprintf(file, "# Setting up stack frame\n");
+            fprintf(file, "# Setting up stack frame %d\n", opcodes_count);
             fprintf(file, "pushl %%ebp\n");
             fprintf(file, "movl %%esp, %%ebp\n");
 
@@ -541,7 +543,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 printf("Function %.*s not found\n", node->ident.name_length, node->ident.name);
                 exit(-1);
             }
-            f->entry = opcodes_count;
+            f->entry = (int*)opcodes_count;
 
             GEN_X86_PUSH_EBP();
             GEN_X86_ESP_EBP();
@@ -594,11 +596,18 @@ void write_x86(struct ASTNode *node, FILE *file) {
     fprintf(file, "call main\n");
     /* Call absoulute address */
 
+    struct function *f = find_function_name("main", 4);
+    if (!f) {
+        printf("Main function not found\n");
+        exit(-1);
+    }
+    int offset = (int)f->entry - opcodes_count;
+    
     /* Placeholder for jump to _start */
     *((int*)placeholder) = (opcodes_count-5);
 
     /* Should call main, not first function */
-    GEN_X86_CALL(-(opcodes_count + 4-5));
+    GEN_X86_CALL((offset-5));
 
     fprintf(file, "movl %%eax, %%ebx\n");
     GEN_X86_EAX_EBX();

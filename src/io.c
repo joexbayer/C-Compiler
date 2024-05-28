@@ -1,4 +1,4 @@
-#include "cc.h"
+#include <cc.h>
 
 int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t *data_size, int *main_pc) {
     FILE *file = fopen(filename, "rb");
@@ -34,7 +34,6 @@ int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t 
     fread(*data, sizeof(char), *data_size, file);
 
     fclose(file);
-    dbgprintf("Bytecode read from %s (%d bytes)\n", filename, (int)(sizeof(int*) + *code_size * sizeof(int) + *data_size * sizeof(char)));
     return code;
 }
 
@@ -60,8 +59,6 @@ void write_bytecode(const char *filename, int *code, size_t code_size, char *dat
     fwrite(&data_size, sizeof(size_t), 1, file);
     fwrite(data, sizeof(char), data_size, file);
     fclose(file);
-
-    dbgprintf("Bytecode written to %s (%d bytes)\n", filename, (int)(sizeof(int*) + code_size * sizeof(short) + data_size * sizeof(char)));
 }
 
 

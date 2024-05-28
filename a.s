@@ -1,43 +1,87 @@
 add:
-# Setting up stack frame
+# Setting up stack frame 5
 pushl %ebp
 movl %esp, %ebp
 movl 12(%ebp), %eax
 pushl %eax
 movl 8(%ebp), %eax
 popl %ebx
-movl %eax, 8(%ebx)
+addl %ebx, %eax
+# Cleaning up stack frame
+popl %ebp
+ret
+
+sub:
+# Setting up stack frame 20
+pushl %ebp
+movl %esp, %ebp
+movl 12(%ebp), %eax
+pushl %eax
+movl 8(%ebp), %eax
+popl %ebx
+subl %ebx, %eax
+# Cleaning up stack frame
+popl %ebp
+ret
+
+mul:
+# Setting up stack frame 35
+pushl %ebp
+movl %esp, %ebp
+movl 12(%ebp), %eax
+pushl %eax
+movl 8(%ebp), %eax
+popl %ebx
+imull %ebx, %eax
+# Cleaning up stack frame
+popl %ebp
+ret
+
+div:
+# Setting up stack frame 51
+pushl %ebp
+movl %esp, %ebp
+# If statement
+movl 8(%ebp), %eax
+pushl %eax
 movl $0, %eax
+popl %ebx
+cmpl %ebx, %eax
+setne %al
+movzb %al, %eax
+cmpl $0, %eax
+je .Lfalse0
+# If true
+movl 12(%ebp), %eax
+pushl %eax
+movl 8(%ebp), %eax
+popl %ebx
+movl $0, %edx
+idivl %ebx
+jmp .Lend1
+.Lfalse0:
+movl $0, %eax
+.Lend1:
 # Cleaning up stack frame
 popl %ebp
 ret
 
 main:
-# Setting up stack frame
+# Setting up stack frame 83
 pushl %ebp
 movl %esp, %ebp
-subl $16, %esp
-leal -16(%ebp), %eax
-pushl %eax
-# Assignment
-# Reference
-leal -12(%ebp), %eax
-popl %ebx
-movl %eax, (%ebx)
-movl $1, -12(%ebp)
-movl $123, -8(%ebp)
-movl $0, -4(%ebp)
+subl $4, %esp
 # Function call
-movl -16(%ebp), %eax
+movl $10, %eax
 pushl %eax
-movl $5, %eax
+movl $10, %eax
 pushl %eax
-call add 5
+call add -104
 addl $8, %esp # Cleanup stack pushed arguments
-movl -16(%ebp), %eax
-movl 8(%eax), %eax
+movl %eax, -4(%ebp)
+movl -4(%ebp), %eax
 # Cleaning up stack frame
-addl $16, %esp
+addl $4, %esp
 popl %ebp
 ret
 

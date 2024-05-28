@@ -1,7 +1,7 @@
 #ifndef __AST_H
 #define __AST_H
 
-#include "cc.h"
+#include <cc.h>
 
 /* AST Node types */
 enum ASTNodeType {

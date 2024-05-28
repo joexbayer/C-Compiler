@@ -18,7 +18,7 @@ int main() {
     m1.b = 123;
     m1.c = 0;
 
-    add(m2, 5); 
+    add(m2, 69); 
 
     return m2->c;
 }

@@ -1,5 +1,5 @@
-#include "cc.h"
-#include "func.h"
+#include <cc.h>
+#include <func.h>
 
 struct function function_table[MAX_FUNCTIONS] = {0};
 int function_id = 0;
@@ -23,10 +23,9 @@ int add_function(int id, char* name, int name_length, int* entry)
     return id;
 }
 
-struct function *find_function_name(char *name, int name_length)
-{
+struct function *find_function_name(char *name, int name_length){
     struct function *f = function_table;
-    while (f->id) {
+    while (f) {
         if (strncmp(f->name, name, name_length) == 0) {
             return f;
         }

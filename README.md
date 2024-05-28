@@ -37,7 +37,7 @@ int add(int a, int b) {
 
 main.c:
 ```c
-#include "math.c"
+#include <math..h>
 
 int main() {
     int a;

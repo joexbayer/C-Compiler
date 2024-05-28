@@ -9,6 +9,8 @@
 #include <stdarg.h> /* For va_list */
 #include <time.h>
 
+#define POOL_SIZE 32*1024
+
 enum TOKENS {
   Num = 128, Fun, Sys, Glo, Loc, Id,
   Break, Case, Char, Default, Else, Enum, If, Int, Return, Sizeof, Struct, Switch, While,
@@ -21,7 +23,11 @@ enum OPCODES {
 };
 enum { CHAR, INT, PTR = 256, PTR2 = 512 };
 
-
+/**
+ * @brief Struct to store the virtual machine state
+ * Importantly, the machine has k of stack, and 65k of code.
+ * Code and data access is relative to the code and data pointers.
+ */
 struct virtual_machine {
     /* Registers */
     int *pc;
@@ -61,8 +67,16 @@ struct member {
     int type;
 } ;
 
+extern int *emitted_code;
+extern int *last_emitted;
+
+extern int *entry;
+
+extern char *data;
+extern char *org_data;
 
 int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t *data_size, int *main_pc);
 void write_bytecode(const char *filename, int *code, size_t code_size, char *data, size_t data_size, int *main_pc);
+
 
 #endif /* DF579CF4_EFA3_4966_AEE7_98CCF666A06B */

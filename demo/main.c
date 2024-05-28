@@ -1,4 +1,4 @@
-#include "./demo/math.c"
+#include <./demo/math..h>
 
 struct math_ops {
     int x;

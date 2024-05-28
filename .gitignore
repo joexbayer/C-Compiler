@@ -1,6 +1,11 @@
 *.o
 .depend
 
+a
+myfile
+*.bin
+
+
 bin/*
 cc
 a.out
