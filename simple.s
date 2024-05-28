@@ -1,8 +1,8 @@
 	.file	"simple.c"
 	.text
-	.globl	perform
-	.type	perform, @function
-perform:
+	.globl	add
+	.type	add, @function
+add:
 .LFB0:
 	.cfi_startproc
 	pushl	%ebp
@@ -13,23 +13,8 @@ perform:
 	call	__x86.get_pc_thunk.ax
 	addl	$_GLOBAL_OFFSET_TABLE_, %eax
 	movl	8(%ebp), %eax
-	movl	$6, (%eax)
-	movl	8(%ebp), %eax
-	movl	$10, 4(%eax)
-	movl	8(%ebp), %eax
-	movl	$20, 8(%eax)
-	movl	12(%ebp), %eax
-	movl	$7, (%eax)
-	movl	12(%ebp), %eax
-	movl	$11, 4(%eax)
-	movl	12(%ebp), %eax
-	movl	$21, 8(%eax)
-	movl	16(%ebp), %eax
-	movl	$8, (%eax)
-	movl	16(%ebp), %eax
-	movl	$12, 4(%eax)
-	movl	16(%ebp), %eax
-	movl	$22, 8(%eax)
+	movl	12(%ebp), %edx
+	movl	%edx, (%eax)
 	movl	$0, %eax
 	popl	%ebp
 	.cfi_restore 5
@@ -37,7 +22,7 @@ perform:
 	ret
 	.cfi_endproc
 .LFE0:
-	.size	perform, .-perform
+	.size	add, .-add
 	.globl	main
 	.type	main, @function
 main:
@@ -51,12 +36,19 @@ main:
 	subl	$16, %esp
 	call	__x86.get_pc_thunk.ax
 	addl	$_GLOBAL_OFFSET_TABLE_, %eax
-	movl	$20, -8(%ebp)
-	leal	-8(%ebp), %eax
-	movl	%eax, -4(%ebp)
+	movl	$1, -4(%ebp)
+	jmp	.L4
+.L7:
+	cmpl	$2, -4(%ebp)
+	jne	.L5
+	addl	$5, -4(%ebp)
+	jmp	.L4
+.L5:
+	addl	$1, -4(%ebp)
+.L4:
+	cmpl	$4, -4(%ebp)
+	jle	.L7
 	movl	-4(%ebp), %eax
-	movl	$30, (%eax)
-	movl	$0, %eax
 	leave
 	.cfi_restore 5
 	.cfi_def_cfa 4, 4
@@ -75,5 +67,5 @@ __x86.get_pc_thunk.ax:
 	ret
 	.cfi_endproc
 .LFE2:
-	.ident	"GCC: (Debian 12.2.0-14) 12.2.0"
+	.ident	"GCC: (Ubuntu 13.2.0-23ubuntu4) 13.2.0"
 	.section	.note.GNU-stack,"",@progbits

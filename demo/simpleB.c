@@ -16,8 +16,9 @@ int main() {
     
     m1.a = 1;
     m1.b = 123;
+    m1.c = 0;
 
-    add(m2, 1);    
+    add(m2, 5); 
 
-    return m1.c;
+    return m2->c;
 }
