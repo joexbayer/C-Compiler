@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 static int* data_section = (int*)0x08048000;
-static uint8_t opcodes[256] = {0};
+static uint8_t opcodes[1024] = {0};
 static int opcodes_count = 0;
 
 #define ADJUST_SIZE(node) (node->value > 0 ? node->value*4 : node->value)
@@ -228,8 +228,57 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 }
             }
 
-            if (node->ident.class == Sys) {
-                fprintf(file, "call _syscall_%d\n", node->ident.val);
+            /* Sys functions are akin to __builtins */
+            if(node->ident.class == Sys) {
+                switch (node->ident.val) {
+                    case INTERRUPT: {
+                        /**
+                         * Interrupt: For the time being, linux style interrupts.
+                         * __interrupt(int number, int eax, int ebx, int ecx, int edx, int esi)
+                         * The number is the interrupt to call.
+                         * Use pushed arguments, pop them into registers and call interrupt.
+                         */                        
+                        /* Pop intterupt */
+                        fprintf(file, "popl %%esi\n"); opcodes[opcodes_count++] = 0x5e;
+                        fprintf(file, "popl %%edx\n"); opcodes[opcodes_count++] = 0x5a;
+                        fprintf(file, "popl %%ecx\n"); opcodes[opcodes_count++] = 0x59;
+                        fprintf(file, "popl %%ebx\n"); opcodes[opcodes_count++] = 0x5b;
+                        fprintf(file, "popl %%eax\n"); opcodes[opcodes_count++] = 0x58;
+
+                        /* pop number */
+                        fprintf(file, "popl %%edi\n"); opcodes[opcodes_count++] = 0x5f;
+
+                        /* xor edi and ebp */
+
+                        fprintf(file, "pushl %%ebp\n"); opcodes[opcodes_count++] = 0x55;
+                        fprintf(file, "xorl %%ebp, %%ebp\n"); opcodes[opcodes_count++] = 0x31; opcodes[opcodes_count++] = 0xed;
+                        fprintf(file, "xorl %%edi, %%edi\n"); opcodes[opcodes_count++] = 0x31; opcodes[opcodes_count++] = 0xff;
+
+                        fprintf(file, "dec %%edi\n"); opcodes[opcodes_count++] = 0x4f;
+
+                        int interrupt = 0;
+                        // last argument
+                        struct ASTNode *arg = node->left;
+                        while (arg->next) {
+                            arg = arg->next;
+                        }
+                        interrupt = arg->value;
+
+                        /* Call interrupt */
+                        fprintf(file, "int $0%d\n", interrupt);
+                        GEN_X86_INT(interrupt);
+
+                        //fprintf(file, "movl %%edi, %%eax\n"); opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0xf8;
+
+                        fprintf(file, "popl %%ebp\n"); opcodes[opcodes_count++] = 0x5d;
+
+                        break;
+                    }
+                    default: {
+                        printf("Unsupported builtin %d\n", node->ident.val);
+                        exit(-1);
+                    }
+                }
             } else if (node->ident.class == Fun) {
 
                 struct function *f = find_function_id(node->ident.val);
@@ -243,7 +292,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 int offset = (int)f->entry - opcodes_count;
                 GEN_X86_CALL(offset-5);
             } else {
-                printf("Unknown function call\n");
+                printf("Unknown x86 function call\n");
                 exit(-1);
             }
             if (node->left) {
@@ -253,7 +302,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     arg_count++;
                     arg = arg->next;
                 }
-                if (arg_count > 0) {
+                if (arg_count > 0 && node->ident.class == Fun) {
                     fprintf(file, "addl $%d, %%esp # Cleanup stack pushed arguments\n", arg_count * 4);
 
                     opcodes[opcodes_count++] = 0x81;
@@ -369,11 +418,11 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     /* If the ident if a pointer, we need to adjust the code */
                     if(node->left->left->ident.type >= PTR && node->left->left->ident.type < PTR2){
                         fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
-                        fprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
-
                         opcodes[opcodes_count++] = 0x8b;
                         opcodes[opcodes_count++] = 0x45;
                         opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left);
+
+                        fprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
                         opcodes[opcodes_count++] = 0xc7;
                         opcodes[opcodes_count++] = 0x40;
                         opcodes[opcodes_count++] = node->left->member->offset;
@@ -399,6 +448,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     }
                 } else if(node->left->type == AST_DEREF){
                     generate_x86(node->left->left, file);
+
                     fprintf(file, "movl $%d, (%%eax)\n", node->right->value);
                     opcodes[opcodes_count++] = 0xc7;
                     opcodes[opcodes_count++] = 0x00;
@@ -414,13 +464,14 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 /* If the ident if a pointer, we need to adjust the code */
                 if(node->left->ident.type >= PTR && node->left->ident.type < PTR2 && node->right->type == AST_NUM){
                     fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left));
-                    fprintf(file, "pushl %%eax\n");
-                    fprintf(file, "movl $%d, (%%eax)\n", node->right->value);
-
                     opcodes[opcodes_count++] = 0x8b;
                     opcodes[opcodes_count++] = 0x45;
                     opcodes[opcodes_count++] = ADJUST_SIZE(node->left);
+
+                    fprintf(file, "pushl %%eax\n");
                     opcodes[opcodes_count++] = 0x50;
+
+                    fprintf(file, "movl $%d, (%%eax)\n", node->right->value);
                     opcodes[opcodes_count++] = 0xc7;
                     opcodes[opcodes_count++] = 0x00;
                     *((int*)(opcodes + opcodes_count)) = node->right->value;
@@ -576,7 +627,12 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 }
 
 void write_opcodes(){
-    FILE *file = fopen("raw.bin", "wb");
+    FILE *file = fopen("output.o", "wb");
+
+#ifdef ELF
+    write_elf_header(file, 0x08048000, opcodes_count, 0);
+#endif
+
     fwrite(opcodes, sizeof(uint8_t), opcodes_count, file);
     fclose(file);
 }

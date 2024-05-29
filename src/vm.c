@@ -94,7 +94,6 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
             case MUL:  a = *sp++ *  a; break;
             case DIV:  a = *sp++ /  a; break;
             case MOD:  a = *sp++ %  a; break;
-
             case OPEN: a = open((char *)sp[1], *sp); break;
             case READ: a = read(sp[2], (char *)sp[1], *sp); break;
             case CLOS: a = close(*sp); break;

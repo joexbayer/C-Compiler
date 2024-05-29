@@ -6,6 +6,10 @@ Based on branch: switch-and-structs
 
 Needs to be compiled with -m32 flag to work as int and pointers are 32 bit.
 
+## Compile
+
+Compiles to bytecode or x86 machine code. 
+
 ## Usage
 ```bash
 make

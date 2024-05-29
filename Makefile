@@ -48,11 +48,7 @@ assembly:
 	echo $?
 
 dump:
-	objdump -d a
-
-bin2exe:
-	objcopy --input-target=binary --output-target=elf32-i386 raw.bin myfile.o
-	ld -m elf_i386 -o myfile myfile.o -T binary.ld
-
+	objdump -D raw.bin
+	
 asm:
 	gcc -S -m32 ./demo/simple.c

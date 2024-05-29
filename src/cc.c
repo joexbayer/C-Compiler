@@ -1475,7 +1475,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     memset(type_size, 0, PTR * sizeof(int));
 
     current_position = "break case char default else enum if int return sizeof struct switch while "
-                       "open read close printf malloc memset memcmp exit void main";
+                       "__interrupt __inportb __outportb __inportw __outportw __inportl __outport __unused void main";
 
     /* Read in symbols */
     int i = Break;
@@ -1485,13 +1485,14 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     }
 
     /* Read in keywords */
-    i = OPEN;
-    while (i <= EXIT) {
+    i = INTERRUPT;
+    while (i <= __UNUSED) {
         next();
         last_identifier->class = Sys;
         last_identifier->type = INT;
         last_identifier->val = i++;
     }
+    i = EXIT;
     next();
     last_identifier->tk = Char;
     next();
@@ -1519,7 +1520,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     next();
     ast_root = parse();
 
-    print_ast(ast_root);
+    //print_ast(ast_root);
 
     generate_bytecode(ast_root);
 
@@ -1552,14 +1553,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     
     --argc; ++argv;
 
-    // Print args
-    printf("argc = %d\n", argc);
-    for (int i = 0; i < argc; i++) {
-        printf("argv[%d] = %s\n", i, argv[i]);
-    }
-
-
-    run_virtual_machine(pc, emitted_code, org_data, argc, argv);
+    //run_virtual_machine(pc, emitted_code, org_data, argc, argv);
     printf("Compilation time: %ld ns\n", diffInNanos);
 
     size_t code_size = last_emitted - emitted_code;
@@ -1567,7 +1561,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     int main_offset = (int)(main_identifier->val - (int)emitted_code);
     write_bytecode(output_file, emitted_code, code_size, org_data, data_size, &main_offset);
     printf("Compilation successful. Machine code written to %s\n", output_file);
-
+    
     free(sym_table);
     free(emitted_code);
     free(org_data);

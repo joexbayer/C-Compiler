@@ -1,85 +1,176 @@
-add:
+alloc:
 # Setting up stack frame 5
 pushl %ebp
 movl %esp, %ebp
-movl 12(%ebp), %eax
+subl $4, %esp
+# Function call
+movl $128, %eax
+pushl %eax
+movl $192, %eax
+pushl %eax
+movl $0, %eax
 pushl %eax
 movl 8(%ebp), %eax
+pushl %eax
+movl $3, %eax
+pushl %eax
+movl $34, %eax
+pushl %eax
+popl %esi
+popl %edx
+popl %ecx
 popl %ebx
-addl %ebx, %eax
+popl %eax
+popl %edi
+pushl %ebp
+xorl %ebp, %ebp
+xorl %edi, %edi
+dec %edi
+int $0128
+popl %ebp
+movl %eax, -4(%ebp)
+movl -4(%ebp), %eax
 # Cleaning up stack frame
+addl $4, %esp
 popl %ebp
 ret
 
-sub:
-# Setting up stack frame 20
+free:
+# Setting up stack frame 77
 pushl %ebp
 movl %esp, %ebp
+# Function call
+movl $128, %eax
+pushl %eax
+movl $91, %eax
+pushl %eax
 movl 12(%ebp), %eax
 pushl %eax
-movl 8(%ebp), %eax
-popl %ebx
-subl %ebx, %eax
-# Cleaning up stack frame
-popl %ebp
-ret
-
-mul:
-# Setting up stack frame 35
-pushl %ebp
-movl %esp, %ebp
-movl 12(%ebp), %eax
-pushl %eax
-movl 8(%ebp), %eax
-popl %ebx
-imull %ebx, %eax
-# Cleaning up stack frame
-popl %ebp
-ret
-
-div:
-# Setting up stack frame 51
-pushl %ebp
-movl %esp, %ebp
-# If statement
 movl 8(%ebp), %eax
 pushl %eax
 movl $0, %eax
+pushl %eax
+movl $0, %eax
+pushl %eax
+popl %esi
+popl %edx
+popl %ecx
 popl %ebx
-cmpl %ebx, %eax
-setne %al
-movzb %al, %eax
-cmpl $0, %eax
-je .Lfalse0
-# If true
+popl %eax
+popl %edi
+pushl %ebp
+xorl %ebp, %ebp
+xorl %edi, %edi
+dec %edi
+int $0128
+popl %ebp
+movl $0, %eax
+# Cleaning up stack frame
+popl %ebp
+ret
+
+print:
+# Setting up stack frame 134
+pushl %ebp
+movl %esp, %ebp
+# Function call
+movl $128, %eax
+pushl %eax
+movl $4, %eax
+pushl %eax
+movl $1, %eax
+pushl %eax
 movl 12(%ebp), %eax
 pushl %eax
 movl 8(%ebp), %eax
-popl %ebx
-movl $0, %edx
-idivl %ebx
-jmp .Lend1
-.Lfalse0:
+pushl %eax
 movl $0, %eax
-.Lend1:
+pushl %eax
+popl %esi
+popl %edx
+popl %ecx
+popl %ebx
+popl %eax
+popl %edi
+pushl %ebp
+xorl %ebp, %ebp
+xorl %edi, %edi
+dec %edi
+int $0128
+popl %ebp
+movl $0, %eax
 # Cleaning up stack frame
 popl %ebp
 ret
 
 main:
-# Setting up stack frame 83
+# Setting up stack frame 191
 pushl %ebp
 movl %esp, %ebp
 subl $4, %esp
 # Function call
-movl $10, %eax
+movl $4096, %eax
 pushl %eax
-movl $10, %eax
-pushl %eax
-call add -104
-addl $8, %esp # Cleanup stack pushed arguments
+call alloc -206
+addl $4, %esp # Cleanup stack pushed arguments
 movl %eax, -4(%ebp)
 movl -4(%ebp), %eax
+pushl %eax
+movl $0, %eax
+popl %ebx
+addl %ebx, %eax
+movl $72, (%eax)
+movl -4(%ebp), %eax
+pushl %eax
+movl $1, %eax
+popl %ebx
+addl %ebx, %eax
+movl $101, (%eax)
+movl -4(%ebp), %eax
+pushl %eax
+movl $2, %eax
+popl %ebx
+addl %ebx, %eax
+movl $108, (%eax)
+movl -4(%ebp), %eax
+pushl %eax
+movl $3, %eax
+popl %ebx
+addl %ebx, %eax
+movl $108, (%eax)
+movl -4(%ebp), %eax
+pushl %eax
+movl $4, %eax
+popl %ebx
+addl %ebx, %eax
+movl $111, (%eax)
+movl -4(%ebp), %eax
+pushl %eax
+movl $5, %eax
+popl %ebx
+addl %ebx, %eax
+movl $10, (%eax)
+movl -4(%ebp), %eax
+pushl %eax
+movl $6, %eax
+popl %ebx
+addl %ebx, %eax
+movl $0, (%eax)
+# Function call
+movl -4(%ebp), %eax
+pushl %eax
+movl $7, %eax
+pushl %eax
+call print -356
+addl $8, %esp # Cleanup stack pushed arguments
+# Function call
+movl -4(%ebp), %eax
+pushl %eax
+movl $4096, %eax
+pushl %eax
+call free -377
+addl $8, %esp # Cleanup stack pushed arguments
+movl $0, %eax
 # Cleaning up stack frame
 addl $4, %esp
 popl %ebp

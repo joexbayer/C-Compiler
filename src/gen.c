@@ -133,7 +133,7 @@ void generate_bytecode(struct ASTNode *node) {
                 *++last_emitted = (int)f->entry - (int)emitted_code;
 
             } else {
-                printf("Unknown function call\n");
+                printf("Unknown function call> %d\n", node->ident.class);
                 exit(-1);
             }
             if (node->left) {

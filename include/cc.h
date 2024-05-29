@@ -11,11 +11,25 @@
 
 #define POOL_SIZE 32*1024
 
+#define ELF
+
 enum TOKENS {
   Num = 128, Fun, Sys, Glo, Loc, Id,
   Break, Case, Char, Default, Else, Enum, If, Int, Return, Sizeof, Struct, Switch, While,
   Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Dot, Arrow, Brak
 };
+
+enum __BUILTIN {
+    INTERRUPT,
+    INPORTB,
+    OUTPORTB,
+    INPORTW,
+    OUTPORTW,
+    INPORTL,
+    OUTPORTL,
+    __UNUSED
+};
+
 enum OPCODES {
     LEA ,IMM ,JMP ,JSR ,BZ  ,BNZ ,ENT ,ADJ ,LEV ,LI  ,LC  ,SI  ,SC  ,PSH ,
     OR  ,XOR ,AND ,EQ  ,NE  ,LT  ,GT  ,LE   ,GE  ,SHL ,SHR ,ADD ,SUB ,MUL ,DIV ,MOD ,
@@ -77,6 +91,8 @@ extern char *org_data;
 
 int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t *data_size, int *main_pc);
 void write_bytecode(const char *filename, int *code, size_t code_size, char *data, size_t data_size, int *main_pc);
+
+int write_elf_header(FILE* file, int entry, int text_size, int data_size);
 
 
 #endif /* DF579CF4_EFA3_4966_AEE7_98CCF666A06B */
