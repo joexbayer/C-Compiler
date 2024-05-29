@@ -1527,7 +1527,6 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     main_identifier->val = (int)entry;
 
     if(1){
-        
         /* print out to .s file */
         FILE *f = fopen("a.s", "w");
         if (!f) {
@@ -1553,14 +1552,13 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     
     --argc; ++argv;
 
-    //run_virtual_machine(pc, emitted_code, org_data, argc, argv);
+    run_virtual_machine(pc, emitted_code, org_data, argc, argv);
     printf("Compilation time: %ld ns\n", diffInNanos);
 
     size_t code_size = last_emitted - emitted_code;
     size_t data_size = data - org_data;
     int main_offset = (int)(main_identifier->val - (int)emitted_code);
     write_bytecode(output_file, emitted_code, code_size, org_data, data_size, &main_offset);
-    printf("Compilation successful. Machine code written to %s\n", output_file);
     
     free(sym_table);
     free(emitted_code);

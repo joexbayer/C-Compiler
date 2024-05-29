@@ -77,7 +77,6 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
             case SI:   *(int *)*sp++ = a; break; /* store int */
             case SC:   a = *(char *)*sp++ = a; break; /* store char */
             case PSH:  *--sp = a; break; /* push */
-
             case OR:   a = *sp++ |  a; break;
             case XOR:  a = *sp++ ^  a; break;
             case AND:  a = *sp++ &  a; break;
@@ -94,17 +93,38 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
             case MUL:  a = *sp++ *  a; break;
             case DIV:  a = *sp++ /  a; break;
             case MOD:  a = *sp++ %  a; break;
-            case OPEN: a = open((char *)sp[1], *sp); break;
-            case READ: a = read(sp[2], (char *)sp[1], *sp); break;
-            case CLOS: a = close(*sp); break;
-            case PRTF: {
-                    t = sp + pc[1];
-                    a = printf((char *)t[-1], t[-2], t[-3], t[-4], t[-5], t[-6]);
-                } 
-                break;
-            case MALC: a = (int)malloc(*sp); break;
-            case MSET: a = (int)memset((char *)sp[2], sp[1], *sp); break;
-            case MCMP: a = memcmp((char *)sp[2], (char *)sp[1], *sp); break;
+            
+            case INTERRUPT: {
+                int arg5 = *sp++;    
+                int arg4 = *sp++;
+                int arg3 = *sp++;
+                int arg2 = *sp++;
+                int arg1 = *sp++;
+                int interrupt = *sp++;
+                switch (interrupt) {
+                    case 0x80: {
+                        switch (arg1) {
+                            case 4: {
+                                printf("%.*s", arg4, (char *)arg3);
+                            }
+                            break;
+                            case 91: {
+                                free((void *)arg2);
+                            }
+                            break;
+                            case 192: {
+                                a = (int)malloc(arg3);
+                            }
+                            break;
+                            default: printf("cc: unknown interrupt = %d! cycle = %d\n", arg1, cycle); goto vm_exit;
+                        }
+                    }
+                    break;
+                    default: printf("cc: unknown interrupt = %d! cycle = %d\n", interrupt, cycle); goto vm_exit;
+                }
+            }
+            break;
+
             case EXIT: {
                 printf("exit(%d) cycle = %d\n", *sp, cycle);
                 goto vm_exit;

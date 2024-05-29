@@ -136,7 +136,7 @@ void generate_bytecode(struct ASTNode *node) {
                 printf("Unknown function call> %d\n", node->ident.class);
                 exit(-1);
             }
-            if (node->left) {
+            if (node->left && node->ident.class == Fun) {
                 int arg_count = 0;
                 struct ASTNode *arg = node->left;
                 while (arg) {

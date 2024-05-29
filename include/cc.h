@@ -20,7 +20,7 @@ enum TOKENS {
 };
 
 enum __BUILTIN {
-    INTERRUPT,
+    INTERRUPT = 64,
     INPORTB,
     OUTPORTB,
     INPORTW,

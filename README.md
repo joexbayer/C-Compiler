@@ -11,17 +11,20 @@ Needs to be compiled with -m32 flag to work as int and pointers are 32 bit.
 Compiles to bytecode or x86 machine code. 
 
 ## Usage
+To compile 
 ```bash
 make
-./c4 file.c
-./c4 -r file.o
+./cc file.c
 ```
+This creates 2  files:
+a.out: bytecode file.
+output.o: Machine code (ELF executable)
 
-Or to use the demo
+To run bytecode:
 ```bash
-make demo
+make
+./cc -r a.out
 ```
-
 
 ## Changes
 Because of the rewrite to be more readable and extendable, the code is not self compilable anymore.
