@@ -33,9 +33,6 @@ int main(int argc, char** argv) {
 
     mo1.x = 10;
     mo1.y = 5;
-
-    printf("Value of x: %d\n", mo1.x);
-    printf("Value of y: %d\n", mo1.y);
     
     mo1.op = '*';
     result = perform(&mo1); 

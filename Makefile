@@ -33,22 +33,8 @@ include .depend
 
 demo: $(OUTPUT)
 	./$(OUTPUT) ./demo/main.c
+	chmod 777 output.o
 
 simple: $(OUTPUT)
 	./$(OUTPUT) ./demo/simple.c
-
-experiment:
-	gcc -m32 -o exp ./experiments/cc_ast.c ./io.c -g
-	./exp ./demo/simple.c
-
-assembly:
-	$(AS) -o a.o a.s
-	$(LD) -o a a.o -lc -dynamic-linker /lib/ld-linux.so.2 -e _start -L/usr/lib -L/lib -l:libc.so.6
-	./a
-	echo $?
-
-dump:
-	objdump -D raw.bin
-	
-asm:
-	gcc -S -m32 ./demo/simple.c
+	chmod 777 output.o

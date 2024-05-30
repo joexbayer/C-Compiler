@@ -4,10 +4,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <sys/stat.h>  /* Include for chmod */
 
+/* TODO: Change this... */
 static int* data_section = (int*)0x08048000;
+
 static uint8_t opcodes[1024] = {0};
 static int opcodes_count = 0;
+
+int asmprintf(FILE* file, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    if(file){
+        vfprintf(file, format, args);
+    }
+
+    va_end(args);
+    return 0;
+}
 
 #define ADJUST_SIZE(node) (node->value > 0 ? node->value*4 : node->value)
 
@@ -78,11 +93,11 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
     switch (node->type) {
         case AST_NUM:
-            fprintf(file, "movl $%d, %%eax\n", node->value);
+            asmprintf(file, "movl $%d, %%eax\n", node->value);
             GEN_X86_IMD_EAX(node->value);
             return;
         case AST_STR:
-            fprintf(file, "movl $%d, %%eax\n", node->value - (int)data_section);
+            asmprintf(file, "movl $%d, %%eax\n", node->value - (int)data_section);
 
             printf("TBD: Implement string\n");
             exit(-1);
@@ -90,7 +105,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
         case AST_IDENT:
             /* Optimization: use movl directly instead of leal and movl */
             if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)){
-                fprintf(file, "movl %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
+                asmprintf(file, "movl %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
 
                 opcodes[opcodes_count++] = 0x8b;
                 opcodes[opcodes_count++] = 0x45;
@@ -99,26 +114,26 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             }
 
             if (node->ident.class == Loc) {
-                fprintf(file, "leal %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
+                asmprintf(file, "leal %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
                 
                 opcodes[opcodes_count++] = 0x8d;
                 opcodes[opcodes_count++] = 0x45;
                 opcodes[opcodes_count++] = node->value;
                 
             } else if (node->ident.class == Glo) {
-                fprintf(file, "movl $%d, %%eax\n", node->ident.val - (int)data_section);
+                asmprintf(file, "movl $%d, %%eax\n", node->ident.val - (int)data_section);
 
                 
                 printf("TBD: Implement global variable\n");
                 exit(-1);
             } else {
-                fprintf(file, "Unknown identifier class\n");
+                asmprintf(file, "Unknown identifier class\n");
                 exit(-1);
             }
 
             /* Load value if it's not a pointer type */
             if (node->ident.type <= INT || node->ident.type >= PTR) {
-                fprintf(file, "%s (%%eax), %%eax\n", (node->ident.type == CHAR) ? "movzb" : "movl");
+                asmprintf(file, "%s (%%eax), %%eax\n", (node->ident.type == CHAR) ? "movzb" : "movl");
 
                 opcodes[opcodes_count++] = 0x0f;
                 opcodes[opcodes_count++] = 0xb6;
@@ -133,35 +148,35 @@ void generate_x86(struct ASTNode *node, FILE *file) {
              */
             generate_x86(node->left, file);
 
-            fprintf(file, "pushl %%eax\n");
+            asmprintf(file, "pushl %%eax\n");
             opcodes[opcodes_count++] = 0x50;
 
             generate_x86(node->right, file);
 
-            fprintf(file, "popl %%ebx\n");
+            asmprintf(file, "popl %%ebx\n");
             opcodes[opcodes_count++] = 0x5b;
 
             switch (node->value) {
                 case Add: {
-                    fprintf(file, "addl %%ebx, %%eax\n");
+                    asmprintf(file, "addl %%ebx, %%eax\n");
                     opcodes[opcodes_count++] = 0x01;
                     opcodes[opcodes_count++] = 0xd8;
                     }break;
                 case Sub: {
-                    fprintf(file, "subl %%ebx, %%eax\n");
+                    asmprintf(file, "subl %%ebx, %%eax\n");
                     opcodes[opcodes_count++] = 0x29;
                     opcodes[opcodes_count++] = 0xd8;
 
                     } break;
                 case Mul:{
-                    fprintf(file, "imull %%ebx, %%eax\n"); 
+                    asmprintf(file, "imull %%ebx, %%eax\n"); 
                     opcodes[opcodes_count++] = 0x0f;
                     opcodes[opcodes_count++] = 0xaf;
                     opcodes[opcodes_count++] = 0xc3;
                     }break;
                 case Div: {
-                    fprintf(file, "movl $0, %%edx\n");
-                    fprintf(file, "idivl %%ebx\n"); 
+                    asmprintf(file, "movl $0, %%edx\n");
+                    asmprintf(file, "idivl %%ebx\n"); 
                     
                     opcodes[opcodes_count++] = 0x89;
                     opcodes[opcodes_count++] = 0xd2;
@@ -169,12 +184,72 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xfb;
                     
                     }break;
-                case Eq: fprintf(file, "cmpl %%ebx, %%eax\nsete %%al\nmovzb %%al, %%eax\n"); break;
-                case Ne: fprintf(file, "cmpl %%ebx, %%eax\nsetne %%al\nmovzb %%al, %%eax\n"); break;
-                case Gt: fprintf(file, "cmpl %%ebx, %%eax\nsetl %%al\nmovzb %%al, %%eax\n"); break;
-                case Ge: fprintf(file, "cmpl %%ebx, %%eax\nsetle %%al\nmovzb %%al, %%eax\n"); break;
-                case Lt: fprintf(file, "cmpl %%ebx, %%eax\nsetg %%al\nmovzb %%al, %%eax\n"); break;
-                case Le: fprintf(file, "cmpl %%ebx, %%eax\nsetge %%al\nmovzb %%al, %%eax\n"); break;
+                case Eq: {
+                    asmprintf(file, "cmpl %%ebx, %%eax\nsete %%al\nmovzb %%al, %%eax\n");
+                    opcodes[opcodes_count++] = 0x39;
+                    opcodes[opcodes_count++] = 0xd8;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x94;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+                    } break;
+                case Ne: {
+                    asmprintf(file, "cmpl %%ebx, %%eax\nsetne %%al\nmovzb %%al, %%eax\n");
+                    opcodes[opcodes_count++] = 0x39;
+                    opcodes[opcodes_count++] = 0xd8;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x95;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+                    } break;
+                case Lt: {
+                    asmprintf(file, "cmpl %%ebx, %%eax\nsetg %%al\nmovzb %%al, %%eax\n");
+                    opcodes[opcodes_count++] = 0x39;
+                    opcodes[opcodes_count++] = 0xd8;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x9f;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+                    } break;
+                case Le: {
+                    asmprintf(file, "cmpl %%ebx, %%eax\nsetge %%al\nmovzb %%al, %%eax\n");
+                    opcodes[opcodes_count++] = 0x39;
+                    opcodes[opcodes_count++] = 0xd8;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x9d;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+                    } break;
+                case Gt: {
+                    asmprintf(file, "cmpl %%ebx, %%eax\nsetl %%al\nmovzb %%al, %%eax\n");
+                    opcodes[opcodes_count++] = 0x39;
+                    opcodes[opcodes_count++] = 0xd8;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x9c;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+                    } break;
+                case Ge: {
+                    asmprintf(file, "cmpl %%ebx, %%eax\nsetle %%al\nmovzb %%al, %%eax\n");
+                    opcodes[opcodes_count++] = 0x39;
+                    opcodes[opcodes_count++] = 0xd8;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x9e;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+                    } break;
                 default:
                     printf("Unknown binary operator %d\n", node->value);
                     exit(-1);
@@ -184,9 +259,9 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             generate_x86(node->left, file);
             switch (node->value) {
                 case Ne:
-                    fprintf(file, "cmpl $0, %%eax\n");
-                    fprintf(file, "sete %%al\n");
-                    fprintf(file, "movzb %%al, %%eax\n");
+                    asmprintf(file, "cmpl $0, %%eax\n");
+                    asmprintf(file, "sete %%al\n");
+                    asmprintf(file, "movzb %%al, %%eax\n");
 
                     opcodes[opcodes_count++] = 0x83;
                     opcodes[opcodes_count++] = 0xf8;
@@ -205,7 +280,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             break;
         case AST_FUNCALL:
             /* Collect arguments in a list to push them in reverse order */
-            fprintf(file, "# Function call\n");
+            asmprintf(file, "# Function call\n");
             if (node->left) {
                 struct ASTNode *args[16]; // assuming a max of 16 args for simplicity
                 int arg_count = 0;
@@ -222,7 +297,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 for (int i = arg_count - 1; i >= 0; i--) {
                     arg = args[i];
                     generate_x86(arg, file);
-                    fprintf(file, "pushl %%eax\n");
+                    asmprintf(file, "pushl %%eax\n");
 
                     opcodes[opcodes_count++] = 0x50;
                 }
@@ -239,22 +314,22 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                          * Use pushed arguments, pop them into registers and call interrupt.
                          */                        
                         /* Pop intterupt */
-                        fprintf(file, "popl %%esi\n"); opcodes[opcodes_count++] = 0x5e;
-                        fprintf(file, "popl %%edx\n"); opcodes[opcodes_count++] = 0x5a;
-                        fprintf(file, "popl %%ecx\n"); opcodes[opcodes_count++] = 0x59;
-                        fprintf(file, "popl %%ebx\n"); opcodes[opcodes_count++] = 0x5b;
-                        fprintf(file, "popl %%eax\n"); opcodes[opcodes_count++] = 0x58;
+                        asmprintf(file, "popl %%esi\n"); opcodes[opcodes_count++] = 0x5e;
+                        asmprintf(file, "popl %%edx\n"); opcodes[opcodes_count++] = 0x5a;
+                        asmprintf(file, "popl %%ecx\n"); opcodes[opcodes_count++] = 0x59;
+                        asmprintf(file, "popl %%ebx\n"); opcodes[opcodes_count++] = 0x5b;
+                        asmprintf(file, "popl %%eax\n"); opcodes[opcodes_count++] = 0x58;
 
                         /* pop number */
-                        fprintf(file, "popl %%edi\n"); opcodes[opcodes_count++] = 0x5f;
+                        asmprintf(file, "popl %%edi\n"); opcodes[opcodes_count++] = 0x5f;
 
                         /* xor edi and ebp */
+                        asmprintf(file, "pushl %%ebp\n"); opcodes[opcodes_count++] = 0x55;
+                        asmprintf(file, "xorl %%ebp, %%ebp\n"); opcodes[opcodes_count++] = 0x31; opcodes[opcodes_count++] = 0xed;
+                        asmprintf(file, "xorl %%edi, %%edi\n"); opcodes[opcodes_count++] = 0x31; opcodes[opcodes_count++] = 0xff;
 
-                        fprintf(file, "pushl %%ebp\n"); opcodes[opcodes_count++] = 0x55;
-                        fprintf(file, "xorl %%ebp, %%ebp\n"); opcodes[opcodes_count++] = 0x31; opcodes[opcodes_count++] = 0xed;
-                        fprintf(file, "xorl %%edi, %%edi\n"); opcodes[opcodes_count++] = 0x31; opcodes[opcodes_count++] = 0xff;
-
-                        fprintf(file, "dec %%edi\n"); opcodes[opcodes_count++] = 0x4f;
+                        /* TODO: This is techincally only for mmap */
+                        asmprintf(file, "dec %%edi\n"); opcodes[opcodes_count++] = 0x4f;
 
                         int interrupt = 0;
                         // last argument
@@ -265,12 +340,10 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         interrupt = arg->value;
 
                         /* Call interrupt */
-                        fprintf(file, "int $0%d\n", interrupt);
+                        asmprintf(file, "int $0%d\n", interrupt);
                         GEN_X86_INT(interrupt);
 
-                        //fprintf(file, "movl %%edi, %%eax\n"); opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0xf8;
-
-                        fprintf(file, "popl %%ebp\n"); opcodes[opcodes_count++] = 0x5d;
+                        asmprintf(file, "popl %%ebp\n"); opcodes[opcodes_count++] = 0x5d;
 
                         break;
                     }
@@ -287,7 +360,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     exit(-1);
                 }
 
-                fprintf(file, "call %.*s %d\n", node->ident.name_length, node->ident.name,-opcodes_count);
+                asmprintf(file, "call %.*s %d\n", node->ident.name_length, node->ident.name,-opcodes_count);
         
                 int offset = (int)f->entry - opcodes_count;
                 GEN_X86_CALL(offset-5);
@@ -303,7 +376,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     arg = arg->next;
                 }
                 if (arg_count > 0 && node->ident.class == Fun) {
-                    fprintf(file, "addl $%d, %%esp # Cleanup stack pushed arguments\n", arg_count * 4);
+                    asmprintf(file, "addl $%d, %%esp # Cleanup stack pushed arguments\n", arg_count * 4);
 
                     opcodes[opcodes_count++] = 0x81;
                     opcodes[opcodes_count++] = 0xc4;
@@ -320,36 +393,60 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             /* leave and ret is done by AST_LEAVE */
             break;
         case AST_IF: {
-            fprintf(file, "# If statement\n");
+            asmprintf(file, "# If statement\n");
             int lfalse = lable_count++;
             int lend = lable_count++;
 
             generate_x86(node->left, file);
-            fprintf(file, "cmpl $0, %%eax\n");
-            fprintf(file, "je .Lfalse%d\n", lfalse);
-            fprintf(file, "# If true\n");
+            asmprintf(file, "cmpl $0, %%eax\n");
+            asmprintf(file, "je .Lfalse%d\n", lfalse);
+            asmprintf(file, "# If true\n");
             generate_x86(node->right->left, file);
             if (node->right->right) {
-                fprintf(file, "jmp .Lend%d\n", lend);
-                fprintf(file, ".Lfalse%d:\n", lfalse);
+                asmprintf(file, "jmp .Lend%d\n", lend);
+                asmprintf(file, ".Lfalse%d:\n", lfalse);
                 generate_x86(node->right->right, file);
-                fprintf(file, ".Lend%d:\n", lend);
+                asmprintf(file, ".Lend%d:\n", lend);
             } else {
-                fprintf(file, ".Lfalse%d:\n", lfalse);
+                asmprintf(file, ".Lfalse%d:\n", lfalse);
             }
             break;
         }
         case AST_WHILE: {
-            fprintf(file, "# While statement\n");
+            asmprintf(file, "# While statement\n");
             int lstart = lable_count++;
             int lend = lable_count++;
-            fprintf(file, ".Lstart%d:\n", lstart);
+
+
+            asmprintf(file, ".Lstart%d:\n", lstart);
+            int while_start = opcodes_count;
+
             generate_x86(node->left, file);
-            fprintf(file, "cmpl $0, %%eax\n");
-            fprintf(file, "je .Lend%d\n", lend);
+
+            asmprintf(file, "cmpl $0, %%eax\n");
+            opcodes[opcodes_count++] = 0x83;
+            opcodes[opcodes_count++] = 0xf8;
+            opcodes[opcodes_count++] = 0x00;
+
+
+            asmprintf(file, "je .Lend%d\n", lend);
+            opcodes[opcodes_count++] = 0x0f;
+            opcodes[opcodes_count++] = 0x84;
+            int while_end_patch = opcodes_count;
+            *((int*)(opcodes + opcodes_count)) = 0;
+            opcodes_count += 4;
+            
+            /* Generate */
             generate_x86(node->right, file);
-            fprintf(file, "jmp .Lstart%d\n", lstart);
-            fprintf(file, ".Lend%d:\n", lend);
+
+            asmprintf(file, "jmp .Lstart%d\n", lstart);
+            opcodes[opcodes_count++] = 0xe9;
+            *((int*)(opcodes + opcodes_count)) = while_start - opcodes_count - 4;
+            opcodes_count += 4;
+
+            asmprintf(file, ".Lend%d:\n", lend);
+            *((int*)(opcodes + while_end_patch)) = opcodes_count - while_end_patch - 4;        
+
             break;
         }
         case AST_BLOCK:
@@ -372,20 +469,20 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 generate_x86(node->right, file);
                 if(node->left->type == AST_IDENT){
                     if(node->left->ident.class == Loc){
-                        fprintf(file, "movl %%eax, %d(%%ebp)\n", node->left->value);
+                        asmprintf(file, "movl %%eax, %d(%%ebp)\n", node->left->value);
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = node->left->value;
                     }
                     else if(node->left->ident.class == Glo){
-                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->ident.val - (int)data_section);
+                        asmprintf(file, "movl %%eax, %d(%%data)\n", node->left->ident.val - (int)data_section);
                         opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->ident.val - (int)data_section; opcodes_count += 4;
                     }
                 } else if(node->left->type == AST_MEMBER_ACCESS){
                     if(node->left->left->ident.class == Loc){
-                        fprintf(file, "movl %%eax, %d(%%ebp)\n", ADJUST_SIZE(node->left->left) + node->left->member->offset);
+                        asmprintf(file, "movl %%eax, %d(%%ebp)\n", ADJUST_SIZE(node->left->left) + node->left->member->offset);
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
                     }
                     else if(node->left->left->ident.class == Glo){
-                        fprintf(file, "movl %%eax, %d(%%data)\n", node->left->left->ident.val - (int)data_section);
+                        asmprintf(file, "movl %%eax, %d(%%data)\n", node->left->left->ident.val - (int)data_section);
                         opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->left->ident.val - (int)data_section; opcodes_count += 4;
                     }
                     else {
@@ -400,7 +497,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 /* Optimization: assign constant to variable */
                 if (node->left->type == AST_IDENT) {
                     if (node->left->ident.class == Loc) {
-                        fprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, node->left->value);
+                        asmprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, node->left->value);
 
                         opcodes[opcodes_count++] = 0xc7;
                         opcodes[opcodes_count++] = 0x45;
@@ -409,7 +506,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes_count += 4;
 
                     } else if (node->left->ident.class == Glo) {
-                        fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)data_section);
+                        asmprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)data_section);
                         printf("TBD: Implement global variable\n");
                         exit(-1);
                     }
@@ -417,12 +514,12 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
                     /* If the ident if a pointer, we need to adjust the code */
                     if(node->left->left->ident.type >= PTR && node->left->left->ident.type < PTR2){
-                        fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
+                        asmprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
                         opcodes[opcodes_count++] = 0x8b;
                         opcodes[opcodes_count++] = 0x45;
                         opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left);
 
-                        fprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
+                        asmprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
                         opcodes[opcodes_count++] = 0xc7;
                         opcodes[opcodes_count++] = 0x40;
                         opcodes[opcodes_count++] = node->left->member->offset;
@@ -433,7 +530,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     } 
 
                     if(node->left->left->ident.class == Loc){
-                        fprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, ADJUST_SIZE(node->left->left) + node->left->member->offset);
+                        asmprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, ADJUST_SIZE(node->left->left) + node->left->member->offset);
                         opcodes[opcodes_count++] = 0xc7;
                         opcodes[opcodes_count++] = 0x45;
                         opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
@@ -441,7 +538,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes_count += 4;
                     }
                     else if(node->left->left->ident.class == Glo)
-                        fprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->left->ident.val - (int)data_section);               
+                        asmprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->left->ident.val - (int)data_section);               
                     else {
                         printf("Unknown identifier class\n");
                         exit(-1);
@@ -449,7 +546,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 } else if(node->left->type == AST_DEREF){
                     generate_x86(node->left->left, file);
 
-                    fprintf(file, "movl $%d, (%%eax)\n", node->right->value);
+                    asmprintf(file, "movl $%d, (%%eax)\n", node->right->value);
                     opcodes[opcodes_count++] = 0xc7;
                     opcodes[opcodes_count++] = 0x00;
                     *((int*)(opcodes + opcodes_count)) = node->right->value;
@@ -463,15 +560,15 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 
                 /* If the ident if a pointer, we need to adjust the code */
                 if(node->left->ident.type >= PTR && node->left->ident.type < PTR2 && node->right->type == AST_NUM){
-                    fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left));
+                    asmprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left));
                     opcodes[opcodes_count++] = 0x8b;
                     opcodes[opcodes_count++] = 0x45;
                     opcodes[opcodes_count++] = ADJUST_SIZE(node->left);
 
-                    fprintf(file, "pushl %%eax\n");
+                    asmprintf(file, "pushl %%eax\n");
                     opcodes[opcodes_count++] = 0x50;
 
-                    fprintf(file, "movl $%d, (%%eax)\n", node->right->value);
+                    asmprintf(file, "movl $%d, (%%eax)\n", node->right->value);
                     opcodes[opcodes_count++] = 0xc7;
                     opcodes[opcodes_count++] = 0x00;
                     *((int*)(opcodes + opcodes_count)) = node->right->value;
@@ -481,28 +578,28 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 }
 
                 if (node->left->ident.class == Loc) {
-                    fprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
+                    asmprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
                     opcodes[opcodes_count++] = 0x8d;
                     opcodes[opcodes_count++] = 0x45;
                     opcodes[opcodes_count++] = node->left->value;
 
 
                 } else if (node->left->ident.class == Glo) {
-                    fprintf(file, "movl $%d, %%eax\n", node->left->ident.val - (int)data_section);
+                    asmprintf(file, "movl $%d, %%eax\n", node->left->ident.val - (int)data_section);
                 }
-                fprintf(file, "pushl %%eax\n");
+                asmprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
             } else if (node->left->type == AST_MEMBER_ACCESS) {
                 /* If the ident if a pointer, we need to adjust the code */
                 if(node->left->left->ident.type >= PTR && node->left->left->ident.type < PTR2){
-                    fprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
+                    asmprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
                     opcodes[opcodes_count++] = 0x8b;
                     opcodes[opcodes_count++] = 0x45;
                     opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left);
 
                     
                     if(node->right->type == AST_NUM){
-                        fprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
+                        asmprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
                         opcodes[opcodes_count++] = 0xc7;
                         opcodes[opcodes_count++] = 0x40;
                         opcodes[opcodes_count++] = node->left->member->offset;
@@ -511,13 +608,13 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
                         return;
                     } else {
-                        fprintf(file, "pushl %%eax\n");
+                        asmprintf(file, "pushl %%eax\n");
                         opcodes[opcodes_count++] = 0x50;
 
                         generate_x86(node->right, file);
-                        fprintf(file, "popl %%ebx\n");
+                        asmprintf(file, "popl %%ebx\n");
                         opcodes[opcodes_count++] = 0x5b;
-                        fprintf(file, "movl %%eax, %d(%%ebx)\n", node->left->member->offset);
+                        asmprintf(file, "movl %%eax, %d(%%ebx)\n", node->left->member->offset);
                         opcodes[opcodes_count++] = 0x89;
                         opcodes[opcodes_count++] = 0x43;
                         opcodes[opcodes_count++] = node->left->member->offset;
@@ -526,56 +623,56 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     return;
                 } 
 
-                fprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset );
+                asmprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset );
                 opcodes[opcodes_count++] = 0x8d;
                 opcodes[opcodes_count++] = 0x45;
                 opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
                 
-                fprintf(file, "pushl %%eax\n");
+                asmprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
             } else if(node->left->type == AST_DEREF){
                 generate_x86(node->left->left, file);
-                fprintf(file, "pushl %%eax\n");
+                asmprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
             } else if(node->left->type == AST_ADDR){
                 generate_x86(node->left->left, file);
-                fprintf(file, "pushl %%eax\n");
+                asmprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
             } else {
                 printf("Left-hand side of assignment must be an identifier or member access\n");
                 exit(-1);
             }
 
-            fprintf(file, "# Assignment\n");
+            asmprintf(file, "# Assignment\n");
             /* Evaluate the right operand and store the result in %eax */
             generate_x86(node->right, file);
 
             /* Pop the address of the left operand into %ebx and perform the assignment */
-            fprintf(file, "popl %%ebx\n");
+            asmprintf(file, "popl %%ebx\n");
             GEN_X86_POP_EBX();
 
-            fprintf(file, "movl %%eax, (%%ebx)\n");
+            asmprintf(file, "movl %%eax, (%%ebx)\n");
             opcodes[opcodes_count++] = 0x89;
             opcodes[opcodes_count++] = 0x03;
             break;
         case AST_MEMBER_ACCESS:
             generate_x86(node->left, file);
-            fprintf(file, "movl %d(%%eax), %%eax\n", node->member->offset);
+            asmprintf(file, "movl %d(%%eax), %%eax\n", node->member->offset);
             opcodes[opcodes_count++] = 0x8b;
             opcodes[opcodes_count++] = 0x40;
             opcodes[opcodes_count++] = node->member->offset;
 
             return;
         case AST_DEREF:
-            fprintf(file, "# Dereference\n");
+            asmprintf(file, "# Dereference\n");
             generate_x86(node->left, file);
-            fprintf(file, "movl (%%eax), %%eax\n");
+            asmprintf(file, "movl (%%eax), %%eax\n");
             opcodes[opcodes_count++] = 0x8b;
             opcodes[opcodes_count++] = 0x00;
             break;
         case AST_ADDR:
-            fprintf(file, "# Reference\n");
-            fprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
+            asmprintf(file, "# Reference\n");
+            asmprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
             opcodes[opcodes_count++] = 0x8d;
             opcodes[opcodes_count++] = 0x45;
             opcodes[opcodes_count++] = node->left->value;
@@ -584,10 +681,10 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             //generate_x86(node->left, file);
             return;
         case AST_ENTER:
-            fprintf(file, "%.*s:\n", node->ident.name_length, node->ident.name);
-            fprintf(file, "# Setting up stack frame %d\n", opcodes_count);
-            fprintf(file, "pushl %%ebp\n");
-            fprintf(file, "movl %%esp, %%ebp\n");
+            asmprintf(file, "%.*s:\n", node->ident.name_length, node->ident.name);
+            asmprintf(file, "# Setting up stack frame %d\n", opcodes_count);
+            asmprintf(file, "pushl %%ebp\n");
+            asmprintf(file, "movl %%esp, %%ebp\n");
 
             struct function *f = find_function_id(node->ident.val);
             if (!f) {
@@ -600,18 +697,18 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             GEN_X86_ESP_EBP();
 
             if(node->value > 0){
-                fprintf(file, "subl $%d, %%esp\n", node->value);
+                asmprintf(file, "subl $%d, %%esp\n", node->value);
                 GEN_X86_SUB_ESP(node->value);
             }
             break;
         case AST_LEAVE:
-            fprintf(file, "# Cleaning up stack frame\n");
+            asmprintf(file, "# Cleaning up stack frame\n");
             if(node->value > 0){
-                fprintf(file, "addl $%d, %%esp\n", node->value);
+                asmprintf(file, "addl $%d, %%esp\n", node->value);
                 GEN_X86_ADD_ESP(node->value);
             }
-            fprintf(file, "popl %%ebp\n");
-            fprintf(file, "ret\n\n");
+            asmprintf(file, "popl %%ebp\n");
+            asmprintf(file, "ret\n\n");
 
             GEN_X86_POP_EBP();
             GEN_X86_RET();
@@ -627,14 +724,15 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 }
 
 void write_opcodes(){
-    FILE *file = fopen("output.o", "wb");
+    FILE *file = fopen(config.output, "wb");
 
-#ifdef ELF
-    write_elf_header(file, 0x08048000, opcodes_count, 0);
-#endif
+    if(config.elf)
+        write_elf_header(file, config.org, opcodes_count, 0);
 
     fwrite(opcodes, sizeof(uint8_t), opcodes_count, file);
     fclose(file);
+
+    chmod(config.output, 0777);
 }
 
 
@@ -647,9 +745,9 @@ void write_x86(struct ASTNode *node, FILE *file) {
     
     generate_x86(node, file);
 
-    fprintf(file, ".globl _start\n");
-    fprintf(file, "_start:\n");
-    fprintf(file, "call main\n");
+    asmprintf(file, ".globl _start\n");
+    asmprintf(file, "_start:\n");
+    asmprintf(file, "call main\n");
     /* Call absoulute address */
 
     struct function *f = find_function_name("main", 4);
@@ -665,13 +763,13 @@ void write_x86(struct ASTNode *node, FILE *file) {
     /* Should call main, not first function */
     GEN_X86_CALL((offset-5));
 
-    fprintf(file, "movl %%eax, %%ebx\n");
+    asmprintf(file, "movl %%eax, %%ebx\n");
     GEN_X86_EAX_EBX();
 
-    fprintf(file, "movl $1, %%eax\n");
+    asmprintf(file, "movl $1, %%eax\n");
     GEN_X86_IMD_EAX(1);
 
-    fprintf(file, "int $0x80\n");
+    asmprintf(file, "int $0x80\n");
     GEN_X86_INT(0x80);
 
     write_opcodes();

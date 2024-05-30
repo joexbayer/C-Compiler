@@ -10,6 +10,5 @@ fi
 
 # Create a new ELF file
 objcopy --input-target=binary --output-target=elf32-i386 --binary-architecture=i386 $1 $1.o
-ld -m elf_i386 -o $2 $1.o -T binary.ld
+ld -m elf_i386 -o $2 $1.o -T legacy/binary.ld
 rm $1.o
-

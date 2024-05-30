@@ -1619,15 +1619,6 @@ vm_exit:
 
 
 
-
-int print_symbols() {
-    printf("Symbols:\n");
-    for (struct identifier *id = sym_table; id->tk; id++) {
-        printf("  %.*s: tk=%d class=%d type=%d val=%d\n", id->name_length, id->name, id->tk, id->class, id->type, id->val);
-    }
-    return 0;
-}
-
 int run_byte_code(char* filename, int argc, char *argv[]){
     printf("Running bytecode from %s\n", filename);
     

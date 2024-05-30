@@ -37,6 +37,23 @@ enum OPCODES {
 };
 enum { CHAR, INT, PTR = 256, PTR2 = 512 };
 
+struct config {
+    char *source;
+    char *output;
+    char *bytecode;
+
+    int run;
+    int argc;
+    char **argv;
+
+    int bytecode_set;
+    int assembly_set;
+    int elf;
+    int org;
+    int ast;
+};
+extern struct config config;
+
 /**
  * @brief Struct to store the virtual machine state
  * Importantly, the machine has k of stack, and 65k of code.
@@ -91,8 +108,10 @@ extern char *org_data;
 
 int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t *data_size, int *main_pc);
 void write_bytecode(const char *filename, int *code, size_t code_size, char *data, size_t data_size, int *main_pc);
-
+int dbgprintf(const char *fmt, ...);
 int write_elf_header(FILE* file, int entry, int text_size, int data_size);
+
+
 
 
 #endif /* DF579CF4_EFA3_4966_AEE7_98CCF666A06B */

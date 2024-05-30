@@ -14,16 +14,31 @@ Compiles to bytecode or x86 machine code.
 To compile 
 ```bash
 make
-./cc file.c
 ```
-This creates 2  files:
-a.out: bytecode file.
-output.o: Machine code (ELF executable)
 
-To run bytecode:
+```
+Usage: ./cc [-o output_file] [-b] [-r] [-s] [--org 0x1000] [--elf] input_file
+Options
+  -o output_file: Specify output file
+  -b: Generate bytecode
+  -r: Run bytecode
+  -s: Print assembly
+  --org 0x1000: Set the origin address
+  --elf: Generate ELF file
+  --ast: Print AST tree
+```
+
+Example:
+
 ```bash
-make
-./cc -r a.out
+./cc -o output.o test.c
+./output.o
+```
+
+
+```bash
+./cc -b -o bytecode.o test.c
+./cc -r bytecode.o
 ```
 
 ## Changes
@@ -32,6 +47,13 @@ Because of the rewrite to be more readable and extendable, the code is not self 
 ### Include
 Added include directive to include other files in the main file.
 Files need to be included in the order they are used.
+
+### Builtin functions
+
+#### Used to call interrupts and I/O functions
+```c
+void __interrupt(int number, int eax, int ebx, int ecx, int edx);
+```
 
 #### Example of usage:
 

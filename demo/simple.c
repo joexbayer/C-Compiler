@@ -1,22 +1,10 @@
-int alloc(int size) {
-    int ptr;
-    ptr = __interrupt(0x80, 192, 0, size, 3, 34);
-    return ptr;
-}
-
-int free(int* ptr, int size) {
-    __interrupt(0x80, 91, ptr, size, 0, 0);
-    return 0;
-}
-
-int print(char* str, int len) {
-    __interrupt(0x80, 4, 1, str, len, 0);
-    return 0;
-}
+#include "lib/linux.c"
 
 int main() {
+    int i;
     char* a;
 
+    i = 0;
     a = alloc(4096);
 
     a[0] = 'H';
@@ -27,7 +15,12 @@ int main() {
     a[5] = 10;
     a[6] = 0;
 
-    print(a, 7);
+    while(i < 5){
+
+        print(a, 7);
+
+        i = i + 1;
+    }
 
     free(a, 4096);
 

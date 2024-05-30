@@ -264,3 +264,13 @@ void generate_bytecode(struct ASTNode *node) {
         generate_bytecode(node->next);
     }
 }
+
+
+int generate(struct ASTNode *node) {
+    emitted_code = malloc(65536);
+    last_emitted = emitted_code;
+
+    memset(emitted_code, 0, 65536);
+    generate_bytecode(node);
+    return 0;
+}

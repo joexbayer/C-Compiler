@@ -16,13 +16,13 @@
 #include <cc.h>
 #include <func.h>
 
+int generate(struct ASTNode *node);
 void generate_bytecode(struct ASTNode *node);
 void generate_x86(struct ASTNode *node, FILE *file);
 void print_ast(struct ASTNode *root);
 void write_x86(struct ASTNode *node, FILE *file);
 void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[]);
-
-
+int cleanup();
 
 #define DEBUG
 #undef DEBUG
@@ -68,6 +68,8 @@ static struct identifier *last_identifier = {0};
 static struct member *members[MAX_MEMBERS] = {0};
 
 static struct ASTNode *ast_root;
+static struct ASTNode *root = NULL;
+static struct ASTNode *current = NULL;
 
 /* Prototypes */
 struct ASTNode *parse();
@@ -75,6 +77,7 @@ static void next();
 static struct ASTNode *expression(int level);
 static struct ASTNode *statement();
 static void include(char *file);
+static int free_ast(struct ASTNode *node);
 
 int free_ast(struct ASTNode *node) {
     if (!node) return 0;
@@ -222,9 +225,6 @@ static void next() {
                             len = current_position - start;
                             strncpy(include_file, start, len);
                             include_file[len] = '\0';
-
-
-                            printf("Including file: %s\n", include_file);
 
                             include(include_file);
                         }
@@ -845,7 +845,6 @@ static struct ASTNode *expression(int level) {
             case Dot:
                 left->data_type += PTR;
                 // fall through to Arrow case
-
             case Arrow:
                 if (left->data_type <= PTR + INT || left->data_type >= PTR2) {
                     printf("%d: illegal use of ->\n", line);
@@ -878,7 +877,8 @@ static struct ASTNode *expression(int level) {
                 binop_node->data_type = left->data_type;
 
                 node = binop_node;
-                    // Set these properties regardless of the offset condition
+                
+                /* Set these properties regardless of the offset condition */
                 node->type = AST_MEMBER_ACCESS;
                 node->member = m;
                 node->data_type = m->type;
@@ -920,13 +920,13 @@ static struct ASTNode *expression(int level) {
                 node->right = right;
                 node->value = Add;
                 node->data_type = left->data_type;
-                left = node;  // The left node is now the address calculation result
+                left = node;  /* The left node is now the address calculation result */
 
-                // Create a dereference node
+                /* Create a dereference node */
                 node = malloc(sizeof(struct ASTNode));
                 node->type = AST_DEREF;
                 node->left = left;
-                node->data_type = left->data_type - PTR;  // The data type is now the type pointed to
+                node->data_type = left->data_type - PTR;
                 break;
             default:
                 printf("%d: compiler error, token = %d\n", line, token);
@@ -1111,10 +1111,6 @@ static struct ASTNode *statement() {
             return stmt;
     }
 }
-
-struct ASTNode *root = NULL;
-struct ASTNode *current = NULL;
-
 struct ASTNode* parse() {
     int i;
     int bt;
@@ -1414,24 +1410,14 @@ struct ASTNode* parse() {
     return root;
 }
 
-int print_symbols() {
-    printf("Symbols:\n");
-    for (struct identifier *id = sym_table; id->tk; id++) {
-        printf("  %.*s: tk=%d class=%d type=%d val=%d\n", id->name_length, id->name, id->tk, id->class, id->type, id->val);
-    }
-    return 0;
-}
-
-int run_byte_code(char* filename, int argc, char *argv[]){
-    printf("Running bytecode from %s\n", filename);
-    
+int run_byte_code(char* filename, int argc, char *argv[]){ 
     char *data;
     int main_offset;
     size_t code_size, data_size;
     int *pc = read_bytecode(filename, &code_size, &data, &data_size, &main_offset);
     int *main_pc = (int*)((int)pc + main_offset);
 
-    printf("Running virtual machine\n");
+    dbgprintf("Running virtual machine\n");
     run_virtual_machine(main_pc, pc, data, argc - 2, &argv[2]);
 
     /* free */
@@ -1448,29 +1434,27 @@ void compile_and_run(char* filename, int argc, char *argv[]){
 
     int fd;
     struct identifier *main_identifier;
-    const char *output_file = "a.out";
 
-    const char *source_file = argv[1];
-    if ((fd = open(source_file, 0)) < 0) {
-        printf("Unable to open source file: %s\n", source_file);
+    if ((fd = open(config.source, 0)) < 0) {
+        printf("Unable to open source file: %s\n", config.source);
         exit(-1);
     }
 
     /* Allocate memory */
     sym_table = (struct identifier *)malloc(POOL_SIZE);
     if (!sym_table) {printf("Unable to malloc sym_table\n");exit(-1);}
-    last_emitted = emitted_code = (int *)malloc(POOL_SIZE);
-    if (!emitted_code) {printf("Unable to malloc emitted_code\n");exit(-1);}
+
     org_data = data = (char *)malloc(POOL_SIZE);
     if (!data) {printf("Unable to malloc data\n");exit(-1);}
+
     type_size = (int *)malloc(PTR * sizeof(int));
     if (!type_size) {printf("Unable to malloc type_size\n");exit(-1);}
+
     include_buffer = (char *)malloc(POOL_SIZE);
     if (!include_buffer) {printf("Unable to malloc include_buffer\n");exit(-1);}
 
     memset(sym_table, 0, POOL_SIZE);
     memset(members, 0, MAX_MEMBERS * sizeof(struct member *));
-    memset(emitted_code, 0, POOL_SIZE);
     memset(data, 0, POOL_SIZE);
     memset(type_size, 0, PTR * sizeof(int));
 
@@ -1520,29 +1504,31 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     next();
     ast_root = parse();
 
-    //print_ast(ast_root);
+    if(config.ast)
+        print_ast(ast_root);
 
-    generate_bytecode(ast_root);
 
-    main_identifier->val = (int)entry;
-
-    if(1){
+    if(!config.bytecode_set){
         /* print out to .s file */
-        FILE *f = fopen("a.s", "w");
-        if (!f) {
-            printf("Unable to open a.s\n");
-            exit(-1);
-        }
+
+
+        FILE *f = NULL;
+        if(config.assembly_set)
+            f = stdout;
         
         write_x86(ast_root, f);
-
-        fclose(f);
+        cleanup();
+        return;
 
     }
-    
+
+    generate(ast_root);
+    main_identifier->val = (int)entry;
+
     struct timespec end_time;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
     long diffInNanos = (end_time.tv_sec - start_time.tv_sec) * (long)1e9 + (end_time.tv_nsec - start_time.tv_nsec);
+
 
     int *pc;
     if (!(pc = (int *)main_identifier->val)) {
@@ -1553,19 +1539,28 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     --argc; ++argv;
 
     run_virtual_machine(pc, emitted_code, org_data, argc, argv);
-    printf("Compilation time: %ld ns\n", diffInNanos);
+    dbgprintf("Compilation time: %ld ns\n", diffInNanos);
 
     size_t code_size = last_emitted - emitted_code;
     size_t data_size = data - org_data;
     int main_offset = (int)(main_identifier->val - (int)emitted_code);
-    write_bytecode(output_file, emitted_code, code_size, org_data, data_size, &main_offset);
+
+    if(config.bytecode_set){
+        write_bytecode(config.output, emitted_code, code_size, org_data, data_size, &main_offset);
+    }
     
-    free(sym_table);
+
     free(emitted_code);
+    cleanup();
+}
+
+int cleanup(){
+    free(sym_table);
     free(org_data);
     free(type_size);
     free(include_buffer);
     free(last_position);
+    return 0;
 }
 
 void print_ast_node(struct ASTNode *node, int indent_level) {
@@ -1575,8 +1570,6 @@ void print_ast_node(struct ASTNode *node, int indent_level) {
     for (int i = 0; i < indent_level; i++) {
         printf("  ");
     }
-
-    // Print the current node
     switch (node->type) {
         case AST_NUM:
             printf("NUM: %d\n", node->value);
@@ -1668,28 +1661,100 @@ void print_ast(struct ASTNode *root) {
     print_ast_node(root, 0);
 }
 
+
+struct config config = {
+    .source = NULL,
+    .output = "a.out",
+    .bytecode = NULL,
+    .run = 0,
+    .argc = 0,
+    .argv = NULL,
+    .bytecode_set = 0,
+    .assembly_set = 0,
+    .elf = 0,
+    .org = 0x08048000
+
+};
+
+#include <getopt.h>
+
+void usage(char *argv[]){
+    fprintf(stderr, "Usage: %s [-o output_file] [-b] [-r] [-s] [--org 0x1000] [--elf] input_file\n", argv[0]);
+    fprintf(stderr, "Options\n");
+    fprintf(stderr, "  -o output_file: Specify output file\n");
+    fprintf(stderr, "  -b: Generate bytecode\n");
+    fprintf(stderr, "  -r: Run bytecode\n");
+    fprintf(stderr, "  -s: Print assembly\n");
+    fprintf(stderr, "  --org 0x1000: Set the origin address\n");
+    fprintf(stderr, "  --elf: Generate ELF file\n");
+    fprintf(stderr, "  --ast: Print AST tree\n");
+    exit(EXIT_FAILURE);
+}
+
 int main(int argc, char *argv[]) {
-   
-    char *run_file = NULL;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-r") == 0) {
-            if (i + 1 < argc) {
-                run_file = argv[++i];
-            } else {
-                printf("Usage: %s [-o <output_file>] [-r <run_file>] <source_file>\n", argv[0]);
-                return -1;
-            }
+    int opt;
+
+    /* Define long options */
+    static struct option long_options[] = {
+        {"org", required_argument, 0, 0},
+        {"elf", no_argument, 0, 0},
+        {"ast", no_argument, 0, 0},
+        {0, 0, 0, 0}
+    };
+    int long_index = 0;
+
+    /* Parse options */
+    while ((opt = getopt_long(argc, argv, "o:brsh", long_options, &long_index)) != -1) {
+        switch (opt) {
+            case 0:
+                if (strcmp(long_options[long_index].name, "org") == 0) {
+                    config.org = strtol(optarg, NULL, 0);
+                } else if (strcmp(long_options[long_index].name, "elf") == 0) {
+                    config.elf = 1;
+                } else if (strcmp(long_options[long_index].name, "ast") == 0) {
+                    config.ast = 1;
+                }
+
+                break;
+            case 'o':
+                config.output = optarg;
+                break;
+            case 'b':
+                config.bytecode_set = 1;
+                break;
+            case 'r':
+                config.run = 1;
+                break;
+            case 's':
+                config.assembly_set = 1;
+                break;
+            case 'h':
+            default:
+                usage(argv);
+                exit(EXIT_FAILURE);
         }
     }
 
-    if (run_file) {
-        run_byte_code(run_file, argc, argv);
+
+    /* Get input file */
+    if (optind < argc) {
+        config.source = argv[optind];
+    }
+
+    /* Check if input file is provided */
+    if (!config.source) {
+        fprintf(stderr, "Input file not specified\n");
+        usage(argv);
+    }
+
+    if (config.run) {
+        run_byte_code(config.source, argc, argv);
         return 0;
     }
 
     compile_and_run(0, argc, argv);
 
-    free_ast(ast_root);
 
+    free_ast(ast_root);
     return 0;
 }
