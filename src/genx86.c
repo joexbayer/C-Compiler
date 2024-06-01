@@ -104,7 +104,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             return;
         case AST_IDENT:
             /* Optimization: use movl directly instead of leal and movl */
-            if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)){
+            if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)  && node->ident.array == 0){
                 asmprintf(file, "movl %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
 
                 opcodes[opcodes_count++] = 0x8b;
@@ -113,9 +113,9 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 return;
             }
 
+
             if (node->ident.class == Loc) {
-                asmprintf(file, "leal %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
-                
+                asmprintf(file, "leal %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value); 
                 opcodes[opcodes_count++] = 0x8d;
                 opcodes[opcodes_count++] = 0x45;
                 opcodes[opcodes_count++] = node->value;
@@ -132,7 +132,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             }
 
             /* Load value if it's not a pointer type */
-            if (node->ident.type <= INT || node->ident.type >= PTR) {
+            if ((node->ident.type <= INT || node->ident.type >= PTR) && node->ident.array == 0) {
                 asmprintf(file, "%s (%%eax), %%eax\n", (node->ident.type == CHAR) ? "movzb" : "movl");
 
                 opcodes[opcodes_count++] = 0x0f;
@@ -458,7 +458,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
         case AST_ASSIGN:
 
             if(node->left->type != AST_IDENT && node->left->type != AST_MEMBER_ACCESS && node->left->type != AST_DEREF && node->left->type != AST_ADDR){
-                printf("Left-hand side of assignment must be an identifier or member access\n");
+                printf("Left-hand side of assignment must be an identifier or member access 2\n");
                 exit(-1);
             }
             if(node->right->type == AST_FUNCALL){
@@ -551,7 +551,21 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0x00;
                     *((int*)(opcodes + opcodes_count)) = node->right->value;
                     opcodes_count += 4;
+                } else if(node->left->type == AST_ADDR){
+                    generate_x86(node->left->left, file);
+
+                    asmprintf(file, "movl $%d, (%%eax)\n", node->right->value);
+                    opcodes[opcodes_count++] = 0xc7;
+                    opcodes[opcodes_count++] = 0x00;
+                    *((int*)(opcodes + opcodes_count)) = node->right->value;
+                    opcodes_count += 4;                    
+
+                } else {
+                    printf("Left-hand side of assignment must be an identifier or member access\n");
+                    exit(-1);
                 }
+
+
                 return; 
             }
 

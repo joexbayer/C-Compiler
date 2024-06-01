@@ -331,7 +331,8 @@ static void next() {
             case '^': token = Xor; return;
             case '%': token = Mod; return;
             case '*': token = Mul; return;
-            case '[': token = Brak; return;
+            case '[': token = BrakOpen; return;
+            case ']': token = BrakClose; return;
             case '?': token = Cond; return;
             case '.' : token = Dot; return;
             default:
@@ -593,6 +594,10 @@ static struct ASTNode *expression(int level) {
             exit(-1);
     }
 
+    if(token == BrakClose){
+        return node;
+    }
+
     while(token >= level){
         left = node;
 
@@ -844,7 +849,7 @@ static struct ASTNode *expression(int level) {
 
             case Dot:
                 left->data_type += PTR;
-                // fall through to Arrow case
+                /* fall through to Arrow case */
             case Arrow:
                 if (left->data_type <= PTR + INT || left->data_type >= PTR2) {
                     printf("%d: illegal use of ->\n", line);
@@ -866,7 +871,7 @@ static struct ASTNode *expression(int level) {
 
                 struct ASTNode *binop_node = malloc(sizeof(struct ASTNode));
                 binop_node->type = AST_BINOP;
-                binop_node->left = left; // Left is the identifier
+                binop_node->left = left; /* Left is the identifier */
 
                 binop_node->right = malloc(sizeof(struct ASTNode));
                 binop_node->right->type = AST_NUM;
@@ -886,23 +891,24 @@ static struct ASTNode *expression(int level) {
                 next();
                 break;
 
-            case Brak:
+            case BrakOpen:
                 next();
                 right = expression(Assign);
-                if(token == ']'){
+                
+                if (token == BrakClose) {
                     next();
                 } else {
-                    printf("%d: close bracket expected\n", line);
+                    printf("%d: close bracket expected: (%c) %d\n", line, token, token);
                     exit(-1);
                 }
 
-                if (left->data_type < PTR){
+                if (left->data_type < PTR) {
                     printf("%d: pointer type expected\n", line);
                     exit(-1);
                 }
 
                 sz = (left->data_type - PTR) >= PTR2 ? sizeof(int) : type_size[left->data_type - PTR];
-                if(sz > 1){
+                if (sz > 1) {
                     node = malloc(sizeof(struct ASTNode));
                     node->type = AST_BINOP;
                     node->left = right;
@@ -924,7 +930,11 @@ static struct ASTNode *expression(int level) {
 
                 /* Create a dereference node */
                 node = malloc(sizeof(struct ASTNode));
-                node->type = AST_DEREF;
+                if(left->left->ident.array == 0){
+                    node->type = AST_DEREF;
+                } else {
+                    node->type = AST_ADDR;
+                }
                 node->left = left;
                 node->data_type = left->data_type - PTR;
                 break;
@@ -1249,6 +1259,23 @@ struct ASTNode* parse() {
 
             last_identifier->type = ty;
 
+            /* Handle array declarations */
+            if (token == BrakOpen) {
+                printf("Array declaration\n");
+                next();
+                if (token != Num) {
+                    printf("%d: expected number for array size\n", line);
+                    exit(-1);
+                }
+                last_identifier->array = ival;
+                next();
+                if (token != BrakClose) {
+                    printf("%d: expected closing bracket for array declaration\n", line);
+                    exit(-1);
+                }
+                next();
+            }
+
             /* Check for function */
             if(token == '(') {
                 last_identifier->class = Fun;
@@ -1286,11 +1313,12 @@ struct ASTNode* parse() {
                         exit(-1);
                     }
 
-                    if(last_identifier->class == Loc) {
+                    /* TODO: Check for duplicate parameter definition */
+                    /* if(last_identifier->hclass == Loc) {
                         printf("%d: duplicate parameter definition\n", line);
                         exit(-1);
                     }
-
+ */
                     last_identifier->hclass = last_identifier->class;
                     last_identifier->htype = last_identifier->type;
                     last_identifier->hval = last_identifier->val;
@@ -1332,25 +1360,58 @@ struct ASTNode* parse() {
                             next();
                             ty = ty + PTR;
                         }
-                        if (token != Id) {
-                            printf("%d: bad local declaration\n", line);
-                            exit(-1);
-                        }
-                        if (last_identifier->class == Loc) {
-                            printf("%d: duplicate local definition\n", line);
-                            exit(-1);
-                        }
-                        last_identifier->htype = last_identifier->type;
-                        last_identifier->hclass = last_identifier->class;
-                        last_identifier->hval = last_identifier->val;
-                        last_identifier->type = ty;
-                        last_identifier->class = Loc;
-                        /* Allocate space based on size */
-                        last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]);
-                        i = last_identifier->val;
+                        /* Handle array declarations */
+                        if (token == Id) {
+                            last_identifier->type = ty;
+                            last_identifier->class = Loc;
+                            next();
 
-                        next();
-                        if (token == ',') next();
+                            /* Check if this is an array declaration */
+                            if (token == BrakOpen) {
+                                printf("Array declaration\n");  
+                                next();
+                                if (token != Num) {
+                                    printf("%d: expected number for array size\n", line);
+                                    exit(-1);
+                                }
+                                last_identifier->array = ival;
+                                ty = ty + PTR;
+                                next();
+                                if (token != BrakClose) {
+                                    printf("%d: expected closing bracket for array declaration\n", line);
+                                    exit(-1);
+                                }
+                                next();
+                            } else {
+                                last_identifier->array = 0; /* Not an array */
+                            }
+
+                            /* Check for duplicate local definition */
+                            if (last_identifier->hclass == Loc) {
+                                printf("%d: duplicate local definition\n", line);
+                                exit(-1);
+                            }
+
+                            /* Set identifier properties */
+                            last_identifier->htype = last_identifier->type;
+                            last_identifier->hclass = last_identifier->class;
+                            last_identifier->hval = last_identifier->val;
+                            last_identifier->type = ty;
+
+                            /* Allocate space based on size */
+                            last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
+                            i = last_identifier->val;
+
+                            /* Move to the next token */
+                            if (token == ',') next();
+                        } else {
+                            if (token == BrakOpen) {
+                                printf("%d: misplaced '['\n", line);
+                            } else {
+                                printf("%d: bad local declaration: %c %d\n", line, token, token);
+                            }
+                            exit(-1);
+                        }
                     }
                     next();
                 }
@@ -1401,7 +1462,7 @@ struct ASTNode* parse() {
                 last_identifier->class = Glo;
                 last_identifier->val = (int)data;
                 /* Allocate space based on size */
-                data += (ty >= PTR ? sizeof(int) : type_size[ty]);
+                data += (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
             }
             if(token == ',') next();
         }
@@ -1566,79 +1627,78 @@ int cleanup(){
 void print_ast_node(struct ASTNode *node, int indent_level) {
     if (!node) return;
 
-    // Print the indentation
     for (int i = 0; i < indent_level; i++) {
         printf("  ");
     }
     switch (node->type) {
         case AST_NUM:
-            printf("NUM: %d\n", node->value);
+            printf("Num: %d\n", node->value);
             break;
         case AST_STR:
-            printf("STR: %d\n", node->value);
+            printf("String: %d\n", node->value);
             break;
         case AST_IDENT:
-            printf("IDENT: %.*s (%d)\n", node->ident.name_length, node->ident.name, node->value);
+            printf("Identifier: %.*s (%d)\n", node->ident.name_length, node->ident.name, node->value);
             break;
         case AST_BINOP:
-            printf("BINOP: %d\n", node->value);
+            printf("Binop: %d\n", node->value);
             break;
         case AST_UNOP:
-            printf("UNOP: %d\n", node->value);
+            printf("Unop: %d\n", node->value);
             break;
         case AST_FUNCALL:
-            printf("FUNCALL: %.*s\n", node->ident.name_length, node->ident.name);
+            printf("Call: %.*s\n", node->ident.name_length, node->ident.name);
             break;
         case AST_FUNCDEF:
-            printf("FUNCDEF\n");
+            printf("Function\n");
             break;
         case AST_VARDECL:
-            printf("VARDECL\n");
+            printf("Vardecl\n");
             break;
         case AST_IF:
-            printf("IF\n");
+            printf("If\n");
             break;
         case AST_WHILE:
-            printf("WHILE\n");
+            printf("While\n");
             break;
         case AST_RETURN:
-            printf("RETURN\n");
+            printf("Return\n");
             break;
         case AST_BLOCK:
-            printf("BLOCK\n");
+            printf("Block\n");
             break;
         case AST_ASSIGN:
-            printf("ASSIGN\n");
+            printf("Assign\n");
             break;
         case AST_EXPR_STMT:
-            printf("EXPR_STMT\n");
+            printf("Expression\n");
             break;
         case AST_SWITCH:
-            printf("SWITCH\n");
+            printf("Switch\n");
             break;
         case AST_CASE:
-            printf("CASE\n");
+            printf("Case\n");
             break;
         case AST_DEFAULT:
-            printf("DEFAULT\n");
+            printf("Default\n");
             break;
         case AST_BREAK:
-            printf("BREAK\n");
+            printf("Break\n");
             break;
         case AST_MEMBER_ACCESS:
-            printf("MEMBER_ACCESS: %.*s\n", node->member->ident->name_length, node->member->ident->name);
+            printf("MemberAccess: %.*s\n", node->member->ident->name_length, node->member->ident->name);
             break;
         case AST_DEREF:
-            printf("DEREF\n");
+            printf("Deref\n");
             break;
         case AST_ADDR:
-            printf("ADDR\n");
+            printf("Addrref.\n");
             break;
         case AST_ENTER:
-            printf("ENTER 0x%x (%.*s)\n", node->value, node->ident.name_length, node->ident.name);
+            printf("Enter 0x%x (%.*s)\n", node->value, node->ident.name_length, node->ident.name);
             break;
         case AST_LEAVE:
-            printf("LEAVE\n");
+            printf("Leave\n");
             break;
         default:
             printf("UNKNOWN NODE TYPE\n");

@@ -16,7 +16,7 @@
 enum TOKENS {
   Num = 128, Fun, Sys, Glo, Loc, Id,
   Break, Case, Char, Default, Else, Enum, If, Int, Return, Sizeof, Struct, Switch, While,
-  Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Dot, Arrow, Brak
+  Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Dot, Arrow, BrakOpen, BrakClose
 };
 
 enum __BUILTIN {
@@ -87,6 +87,7 @@ struct identifier {
     int hclass;
     int htype;
     int hval;
+    int array; /* Array size */
 };
 
 #define MAX_MEMBERS 128
