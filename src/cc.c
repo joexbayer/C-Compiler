@@ -1387,9 +1387,11 @@ struct ASTNode* parse() {
                             }
 
                             /* Check for duplicate local definition */
-                            if (last_identifier->hclass == Loc) {
-                                printf("%d: duplicate local definition\n", line);
-                                exit(-1);
+                            if (last_identifier->class == Loc) {
+                                //printf("%d: duplicate local definition\n", line);
+                                //exit(-1);
+                                
+                                /* TODO: handle dupllicate local */
                             }
 
                             /* Set identifier properties */
