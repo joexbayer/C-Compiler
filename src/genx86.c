@@ -146,12 +146,12 @@ void generate_x86(struct ASTNode *node, FILE *file) {
              * then the right operand is evaluated and the result is stored in %eax.
              * The left operand is then popped into %ebx and the operation is performed. 
              */
-            generate_x86(node->left, file);
+            generate_x86(node->right, file);
 
             asmprintf(file, "pushl %%eax\n");
             opcodes[opcodes_count++] = 0x50;
 
-            generate_x86(node->right, file);
+            generate_x86(node->left, file);
 
             asmprintf(file, "popl %%ebx\n");
             opcodes[opcodes_count++] = 0x5b;
