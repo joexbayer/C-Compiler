@@ -4,12 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+
 #include <sys/stat.h>  /* Include for chmod */
+
+#define ELF_HEADER_SIZE 84
 
 /* TODO: Change this... */
 static int* data_section = (int*)0x08048000;
 
-static uint8_t opcodes[1024] = {0};
+static uint8_t* opcodes;
 static int opcodes_count = 0;
 
 int asmprintf(FILE* file, const char *format, ...) {
@@ -96,11 +99,19 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             asmprintf(file, "movl $%d, %%eax\n", node->value);
             GEN_X86_IMD_EAX(node->value);
             return;
-        case AST_STR:
-            asmprintf(file, "movl $%d, %%eax\n", node->value - (int)data_section);
+        case AST_STR:{
+                /**
+                 * The Data section is located at the start of the file.
+                 * With ELF, its located after the ELF header.
+                 * However, the first 5 bytes are reserved for the JMP to main.
+                 */
+                int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
 
-            printf("TBD: Implement string\n");
-            exit(-1);
+                asmprintf(file, "movl $0x%x, %%eax\n", (config.org+5) + offset);
+                opcodes[opcodes_count++] = 0xb8;
+                *((int*)(opcodes + opcodes_count)) = (config.org+5) + offset;
+                opcodes_count += 4;
+            }
             return;
         case AST_IDENT:
             /* Optimization: use movl directly instead of leal and movl */
@@ -122,13 +133,9 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 
             } else if (node->ident.class == Glo) {
                 asmprintf(file, "movl $%d, %%eax\n", node->ident.val - (int)data_section);
-
-                
                 printf("TBD: Implement global variable\n");
-                exit(-1);
             } else {
                 asmprintf(file, "Unknown identifier class\n");
-                exit(-1);
             }
 
             /* Load value if it's not a pointer type */
@@ -508,7 +515,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     } else if (node->left->ident.class == Glo) {
                         asmprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)data_section);
                         printf("TBD: Implement global variable\n");
-                        exit(-1);
                     }
                 } else if (node->left->type == AST_MEMBER_ACCESS) {
 
@@ -750,12 +756,23 @@ void write_opcodes(){
 }
 
 
-void write_x86(struct ASTNode *node, FILE *file) {
+void write_x86(struct ASTNode *node, FILE *file, char* data_section, int data_section_size) {
+
+    opcodes = malloc(1024*1024);
+
     /* Prepare jump to _start */
     opcodes[opcodes_count++] = 0xe9;
     uint8_t *placeholder = opcodes + opcodes_count;
     *((int*)(opcodes + opcodes_count)) = 0;
     opcodes_count += 4;
+
+    /* Write data section */
+    for(int i = 0; i < data_section_size; i++){
+        asmprintf(file, ".data %d\n", i);
+        asmprintf(file, ".byte %d\n", data_section[i]);
+
+        opcodes[opcodes_count++] = data_section[i];
+    }
     
     generate_x86(node, file);
 

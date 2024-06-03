@@ -105,7 +105,7 @@ void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[])
                     case 0x80: {
                         switch (arg1) {
                             case 4: {
-                                printf("%.*s", arg4, (char *)arg3);
+                                printf("%.*s", arg4, (char *)(arg3));
                             }
                             break;
                             case 91: {

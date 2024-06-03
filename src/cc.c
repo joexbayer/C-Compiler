@@ -20,7 +20,7 @@ int generate(struct ASTNode *node);
 void generate_bytecode(struct ASTNode *node);
 void generate_x86(struct ASTNode *node, FILE *file);
 void print_ast(struct ASTNode *root);
-void write_x86(struct ASTNode *node, FILE *file);
+void write_x86(struct ASTNode *node, FILE *file, char* data_section, int data_section_size);
 void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[]);
 int cleanup();
 
@@ -50,18 +50,6 @@ static int type;
 static int local_offset;
 
 static int line;
-
-
-/**
- * @brief Pointers used to store the current position in the file
- * when another file is included. Having these as global variables
- * limits us to a single "depth" of file inclusion.
- */
-static char *original_position;
-static char *original_last_position;
-static int original_line;
-static char *include_buffer;
-
 
 static struct identifier *sym_table;
 static struct identifier *last_identifier = {0};
@@ -98,20 +86,66 @@ int dbgprintf(const char *fmt, ...){
 }
 
 
+struct include_file {
+    char file[256];
+    char* buffer;
+};
+
+static struct include_file includes[32];
+static int include_count = 0;
+
+static int find_include(char *file) {
+    for (int i = 0; i < include_count; i++) {
+        if (strcmp(includes[i].file, file) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int add_include(char *file, char *buffer) {
+    if (include_count < 32) {
+        strcpy(includes[include_count].file, file);
+        includes[include_count].buffer = buffer;
+        include_count++;
+        return 1;
+    }
+    return 0;
+}
+
+
 static void include(char *file) {
     int fd, len;
 
+    if (find_include(file)) {
+        dbgprintf("Already included: %s\n", file);
+        return;
+    }
+
+    dbgprintf("Including file: %s\n", file);
+
+    char *original_position;
+    char *original_last_position;
+    int original_line;
+
     /* Store the current parsing state */
-    original_position = current_position + 1;
+    original_position = current_position;
     original_last_position = last_position;
     original_line = line;
+
+    char *include_buffer = malloc(POOL_SIZE);
+
+    if (include_buffer == NULL) {
+        perror("Failed to allocate memory for include buffer");
+        exit(EXIT_FAILURE);
+    }
 
     fd = open(file, O_RDONLY);
     if (fd >= 0) {
         len = read(fd, include_buffer, POOL_SIZE - 1);
         if (len > 0) {
             include_buffer[len] = '\0';
-            close(fd);
+            close(fd);  // Close file descriptor after reading
 
             /* Switch to new file */
             current_position = include_buffer;
@@ -125,12 +159,21 @@ static void include(char *file) {
             current_position = original_position;
             last_position = original_last_position;
             line = original_line;
-            close(fd);
+
+            add_include(file, include_buffer);
+
+            //free(include_buffer);
             return;
+        } else {
+            perror("Failed to read from file");
+            close(fd);  // Ensure file descriptor is closed on error
+            free(include_buffer);
+            exit(EXIT_FAILURE);
         }
     } else {
-        printf("Unable to open include file: %s\n", file);
-        exit(-1);
+        perror("Unable to open include file");
+        free(include_buffer);
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -457,7 +500,6 @@ static struct ASTNode *expression(int level) {
 
                 if(id->class == Loc){
                     node->value = local_offset - id->val;
-                    dbgprintf("%.*s> Local offset: %d (%d - %d)\n", node->ident.name_length, node->ident.name, node->value, local_offset, id->val);
                 } else if(id->class == Glo){
                     node->value = id->val - (int)org_data;
                 } else {
@@ -1513,9 +1555,6 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     type_size = (int *)malloc(PTR * sizeof(int));
     if (!type_size) {printf("Unable to malloc type_size\n");exit(-1);}
 
-    include_buffer = (char *)malloc(POOL_SIZE);
-    if (!include_buffer) {printf("Unable to malloc include_buffer\n");exit(-1);}
-
     memset(sym_table, 0, POOL_SIZE);
     memset(members, 0, MAX_MEMBERS * sizeof(struct member *));
     memset(data, 0, POOL_SIZE);
@@ -1579,7 +1618,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
         if(config.assembly_set)
             f = stdout;
         
-        write_x86(ast_root, f);
+        write_x86(ast_root, f, org_data, (int)data - (int)org_data);
         cleanup();
         return;
 
@@ -1621,8 +1660,26 @@ int cleanup(){
     free(sym_table);
     free(org_data);
     free(type_size);
-    free(include_buffer);
+    //free(include_buffer);
     free(last_position);
+
+    for(int i = 0; i < MAX_MEMBERS; i++){
+        struct member *m = members[i];
+        while(m){
+            struct member *tmp = m;
+            m = m->next;
+            free(tmp);
+        }
+    }
+
+    /* AST */
+    free_ast(ast_root);
+
+    /* Free include buffer */
+    for(int i = 0; i < include_count; i++){
+        free(includes[i].buffer);
+    }   
+
     return 0;
 }
 
@@ -1816,7 +1873,5 @@ int main(int argc, char *argv[]) {
 
     compile_and_run(0, argc, argv);
 
-
-    free_ast(ast_root);
     return 0;
 }

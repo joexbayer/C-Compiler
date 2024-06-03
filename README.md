@@ -80,6 +80,17 @@ int main() {
 }
 ```
 
+### Data section
+#### Bytecode
+With bytecode the data section is located after the opcodes
+and only the offsets are stored. 
+
+#### x86 m32
+With x86 the Data section is located at the start of the file.
+With ELF, its located after the ELF header.
+However, the first 5 bytes are reserved for the JMP to main.
+Access to the data section is dependent on the ORG
+
 ### Bytecode output files
 Added the possibility to output the bytecode to a file and run it later.
 Mainly to avoid needing to recompile the code every time.

@@ -18,3 +18,9 @@ int print(char* str, int len) {
     __interrupt(0x80, 4, 1, str, len, 0);
     return 0;
 }
+
+int exit(int status) {
+    // 1 is exit
+    __interrupt(0x80, 1, status, 0, 0, 0);
+    return 0;
+}
