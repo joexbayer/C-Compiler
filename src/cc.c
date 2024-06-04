@@ -501,7 +501,7 @@ static struct ASTNode *expression(int level) {
                 if(id->class == Loc){
                     node->value = local_offset - id->val;
                 } else if(id->class == Glo){
-                    node->value = id->val - (int)org_data;
+                    node->value = id->val;
                 } else {
                     printf("%d: undefined variable: class %d\n", line, id->class);
                     exit(-1);

@@ -106,7 +106,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                  * However, the first 5 bytes are reserved for the JMP to main.
                  */
                 int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
-
                 asmprintf(file, "movl $0x%x, %%eax\n", (config.org+5) + offset);
                 opcodes[opcodes_count++] = 0xb8;
                 *((int*)(opcodes + opcodes_count)) = (config.org+5) + offset;
@@ -132,11 +131,18 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 opcodes[opcodes_count++] = node->value;
                 
             } else if (node->ident.class == Glo) {
-                asmprintf(file, "movl $%d, %%eax\n", node->ident.val - (int)data_section);
-                printf("TBD: Implement global variable\n");
+                int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+
+                asmprintf(file, "movl $%d, %%eax\n", config.org+5 + offset);
+                opcodes[opcodes_count++] = 0xb8;
+                *((int*)(opcodes + opcodes_count)) = config.org+5 + offset;
+                opcodes_count += 4;
             } else {
                 asmprintf(file, "Unknown identifier class\n");
+                exit(-1);
             }
+
+            /* TODO: Bug with Global char* in test.c */
 
             /* Load value if it's not a pointer type */
             if ((node->ident.type <= INT || node->ident.type >= PTR) && node->ident.array == 0) {
@@ -405,17 +411,42 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             int lend = lable_count++;
 
             generate_x86(node->left, file);
+           
             asmprintf(file, "cmpl $0, %%eax\n");
+            opcodes[opcodes_count++] = 0x83;
+            opcodes[opcodes_count++] = 0xf8;
+            opcodes[opcodes_count++] = 0x00;
+
+            /* jmp to false placeholder */
             asmprintf(file, "je .Lfalse%d\n", lfalse);
+            opcodes[opcodes_count++] = 0x0f;
+            opcodes[opcodes_count++] = 0x84;
+            int lfalse_patch = opcodes_count;
+            *((int*)(opcodes + opcodes_count)) = 0;
+            opcodes_count += 4;
+
             asmprintf(file, "# If true\n");
             generate_x86(node->right->left, file);
+
             if (node->right->right) {
+
+                /* jmp to end placeholder */
                 asmprintf(file, "jmp .Lend%d\n", lend);
+                opcodes[opcodes_count++] = 0xe9;
+                int lend_patch = opcodes_count;
+                *((int*)(opcodes + opcodes_count)) = 0;
+                opcodes_count += 4;
+
                 asmprintf(file, ".Lfalse%d:\n", lfalse);
+                *((int*)(opcodes + lfalse_patch)) = opcodes_count - lfalse_patch - 4;
+
                 generate_x86(node->right->right, file);
+                
                 asmprintf(file, ".Lend%d:\n", lend);
+                *((int*)(opcodes + lend_patch)) = opcodes_count - lend_patch - 4;
             } else {
                 asmprintf(file, ".Lfalse%d:\n", lfalse);
+                *((int*)(opcodes + lfalse_patch)) = opcodes_count - lfalse_patch - 4;
             }
             break;
         }
@@ -480,8 +511,12 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = node->left->value;
                     }
                     else if(node->left->ident.class == Glo){
-                        asmprintf(file, "movl %%eax, %d(%%data)\n", node->left->ident.val - (int)data_section);
-                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->ident.val - (int)data_section; opcodes_count += 4;
+                        int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int address = config.org+5 + offset;
+
+                        /* insert %eax into address */
+                        asmprintf(file, "movl %%eax, $0x%x\n", address);
+                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = address; opcodes_count += 4;
                     }
                 } else if(node->left->type == AST_MEMBER_ACCESS){
                     if(node->left->left->ident.class == Loc){
@@ -489,8 +524,12 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
                     }
                     else if(node->left->left->ident.class == Glo){
-                        asmprintf(file, "movl %%eax, %d(%%data)\n", node->left->left->ident.val - (int)data_section);
-                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = node->left->left->ident.val - (int)data_section; opcodes_count += 4;
+                        int offset = (node->left->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int address = config.org+5 + offset;
+
+                        /* insert %eax into address with member offset */
+                        asmprintf(file, "movl %%eax, $0x%x\n", address + node->left->member->offset);
+                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = address + node->left->member->offset; opcodes_count += 4;
                     }
                     else {
                         printf("Unknown identifier class\n");
@@ -513,8 +552,13 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         opcodes_count += 4;
 
                     } else if (node->left->ident.class == Glo) {
-                        asmprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->ident.val - (int)data_section);
-                        printf("TBD: Implement global variable\n");
+                        int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int address = config.org+5 + offset;
+
+                        /* insert constant into address */
+                        asmprintf(file, "movl $%d, $0x%x\n", node->right->value, address);
+                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = address; opcodes_count += 4;
+
                     }
                 } else if (node->left->type == AST_MEMBER_ACCESS) {
 
@@ -543,8 +587,14 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         *((int*)(opcodes + opcodes_count)) = node->right->value;
                         opcodes_count += 4;
                     }
-                    else if(node->left->left->ident.class == Glo)
-                        asmprintf(file, "movl $%d, %d(%%data)\n", node->right->value, node->left->left->ident.val - (int)data_section);               
+                    else if(node->left->left->ident.class == Glo){
+                        int offset = (node->left->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int address = config.org+5 + offset;
+
+                        /* insert constant into address with member offset */
+                        asmprintf(file, "movl $%d, $0x%x\n", node->right->value, address + node->left->member->offset);
+                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = address + node->left->member->offset; opcodes_count += 4;
+                    }             
                     else {
                         printf("Unknown identifier class\n");
                         exit(-1);
@@ -605,7 +655,13 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
 
                 } else if (node->left->ident.class == Glo) {
-                    asmprintf(file, "movl $%d, %%eax\n", node->left->ident.val - (int)data_section);
+                    int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                    int address = config.org+5 + offset;
+
+                    asmprintf(file, "movl $0x%x, %%eax\n", address);
+                    opcodes[opcodes_count++] = 0xb8;
+                    *((int*)(opcodes + opcodes_count)) = address;
+                    opcodes_count += 4;
                 }
                 asmprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
@@ -643,6 +699,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     return;
                 } 
 
+                /* TODO: Assumes Loc */
                 asmprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset );
                 opcodes[opcodes_count++] = 0x8d;
                 opcodes[opcodes_count++] = 0x45;
