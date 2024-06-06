@@ -1,13 +1,8 @@
 #include "lib/linux.c"
 
-char* str;
-
 void test(int cond){
-
-    str = "Passed\n";
-
     if(cond){
-        print(str, 7);
+        print("Passed\n", 7);
     } else {
         print("Failed\n", 7);
     }

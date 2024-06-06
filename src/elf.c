@@ -62,7 +62,7 @@ static void program_header(Elf32_Phdr *phdr, uint32_t offset, uint32_t vaddr, ui
     phdr->p_paddr = vaddr;
     phdr->p_filesz = filesz;
     phdr->p_memsz = filesz;
-    phdr->p_flags = PF_R | PF_X;
+    phdr->p_flags = PF_R | PF_X | PF_W;
     phdr->p_align = 0x0;
 }
 

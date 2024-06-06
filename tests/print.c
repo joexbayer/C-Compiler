@@ -1,6 +1,6 @@
 #include "lib/linux.c"
 
 int main(){
-    print("Hello, World!\n", 13);
+    print("Passed\n", 7);
     return 0;
 }

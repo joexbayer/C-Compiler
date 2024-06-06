@@ -12,6 +12,7 @@ OUTPUTDIR = ./bin/
 
 SRC_FILES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*/*.c)
 OBJ_FILES = $(SRC_FILES:$(SRC_DIR)/%.c=$(OUTPUTDIR)%.o)
+TESTS := $(wildcard ./tests/*)
 
 $(OUTPUT): $(OBJ_FILES)
 	$(CC) -o $@ $(OBJ_FILES) $(CCFLAGS)
@@ -38,3 +39,18 @@ demo: $(OUTPUT)
 simple: $(OUTPUT)
 	./$(OUTPUT) ./demo/simple.c
 	chmod 777 output.o
+
+tests: $(OUTPUT)
+	@for file in $(TESTS); do \
+		echo "[TEST $$file]"; \
+		./$(OUTPUT) --elf $$file; \
+		./a.out; \
+	done
+
+bytetests:$(OUTPUT)
+	@for file in $(TESTS); do \
+		echo "[RUNTIME $$file]"; \
+		./$(OUTPUT) --elf -b $$file; \
+		echo "[BYTECODE $$file]"; \
+		./$(OUTPUT)  -r ./a.out; \
+	done

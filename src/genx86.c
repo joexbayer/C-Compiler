@@ -106,7 +106,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                  * However, the first 5 bytes are reserved for the JMP to main.
                  */
                 int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
-                asmprintf(file, "movl $0x%x, %%eax\n", (config.org+5) + offset);
+                asmprintf(file, "movl $0x%x, %%eax # str\n", (config.org+5) + offset);
                 opcodes[opcodes_count++] = 0xb8;
                 *((int*)(opcodes + opcodes_count)) = (config.org+5) + offset;
                 opcodes_count += 4;
@@ -123,6 +123,21 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 return;
             }
 
+            if(node->ident.class == Glo && (node->ident.type <= INT || node->ident.type >= PTR) && node->ident.array == 0){
+                int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                int address = config.org+5 + offset;
+
+                asmprintf(file, "movl $0x%x, %%eax\n", address);
+                opcodes[opcodes_count++] = 0xb8;
+                *((int*)(opcodes + opcodes_count)) = address;
+                opcodes_count += 4;
+
+                asmprintf(file, "movl (%%eax), %%eax\n");
+                opcodes[opcodes_count++] = 0x8b;
+                opcodes[opcodes_count++] = 0x00;
+                return;
+            }
+
 
             if (node->ident.class == Loc) {
                 asmprintf(file, "leal %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value); 
@@ -133,7 +148,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             } else if (node->ident.class == Glo) {
                 int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
 
-                asmprintf(file, "movl $%d, %%eax\n", config.org+5 + offset);
+                asmprintf(file, "movl $0x%x, %%eax\n", config.org+5 + offset);
                 opcodes[opcodes_count++] = 0xb8;
                 *((int*)(opcodes + opcodes_count)) = config.org+5 + offset;
                 opcodes_count += 4;
@@ -144,12 +159,17 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
             /* TODO: Bug with Global char* in test.c */
 
-            /* Load value if it's not a pointer type */
-            if ((node->ident.type <= INT || node->ident.type >= PTR) && node->ident.array == 0) {
-                asmprintf(file, "%s (%%eax), %%eax\n", (node->ident.type == CHAR) ? "movzb" : "movl");
+            printf("Type: %d\n", node->ident.type);
+            printf("Int: %d\n", INT);
+            printf("PTR: %d\n", PTR);
+            printf("PTR2: %d\n", PTR2);
+            printf("Array: %d\n", node->ident.array);
 
-                opcodes[opcodes_count++] = 0x0f;
-                opcodes[opcodes_count++] = 0xb6;
+            /* Load value if it's not a pointer type */
+            if ((node->ident.type >= INT || node->ident.type > PTR) && node->ident.array == 0) {
+                asmprintf(file, "%s (%%eax), %%eax\n", "movl"); // (node->ident.type == CHAR) ? "movzb" :
+
+                opcodes[opcodes_count++] = 0x8b;
                 opcodes[opcodes_count++] = 0x00;
             }
             return;
@@ -553,7 +573,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
                     } else if (node->left->ident.class == Glo) {
                         int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
-                        int address = config.org+5 + offset;
+                        int address = config.org+5 + offset ;
 
                         /* insert constant into address */
                         asmprintf(file, "movl $%d, $0x%x\n", node->right->value, address);
@@ -658,7 +678,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                     int address = config.org+5 + offset;
 
-                    asmprintf(file, "movl $0x%x, %%eax\n", address);
+                    asmprintf(file, "movl $0x%x, %%eax # Ident\n", address);
                     opcodes[opcodes_count++] = 0xb8;
                     *((int*)(opcodes + opcodes_count)) = address;
                     opcodes_count += 4;

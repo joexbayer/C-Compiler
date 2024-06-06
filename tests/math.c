@@ -19,8 +19,9 @@ int main(){
     c = a * b;
     test(c == 20);
 
-    //c = a / b;
-    //test(c == 5);
+    // SIGFPE {si_signo=SIGFPE, si_code=FPE_INTDIV, si_addr=0x80482b7}
+    // c = a / b;
+    // test(c == 5);
 
     return c;
 }   
