@@ -1299,17 +1299,16 @@ struct ASTNode* parse() {
 
             next();
 
-            last_identifier->type = ty;
 
             /* Handle array declarations */
             if (token == BrakOpen) {
-                printf("Array declaration\n");
                 next();
                 if (token != Num) {
                     printf("%d: expected number for array size\n", line);
                     exit(-1);
                 }
                 last_identifier->array = ival;
+                ty = ty + PTR;
                 next();
                 if (token != BrakClose) {
                     printf("%d: expected closing bracket for array declaration\n", line);
@@ -1317,6 +1316,7 @@ struct ASTNode* parse() {
                 }
                 next();
             }
+            last_identifier->type = ty;
 
             /* Check for function */
             if(token == '(') {
@@ -1410,7 +1410,6 @@ struct ASTNode* parse() {
 
                             /* Check if this is an array declaration */
                             if (token == BrakOpen) {
-                                printf("Array declaration\n");  
                                 next();
                                 if (token != Num) {
                                     printf("%d: expected number for array size\n", line);

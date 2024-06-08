@@ -157,14 +157,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 exit(-1);
             }
 
-            /* TODO: Bug with Global char* in test.c */
-
-            printf("Type: %d\n", node->ident.type);
-            printf("Int: %d\n", INT);
-            printf("PTR: %d\n", PTR);
-            printf("PTR2: %d\n", PTR2);
-            printf("Array: %d\n", node->ident.array);
-
             /* Load value if it's not a pointer type */
             if ((node->ident.type >= INT || node->ident.type > PTR) && node->ident.array == 0) {
                 asmprintf(file, "%s (%%eax), %%eax\n", "movl"); // (node->ident.type == CHAR) ? "movzb" :
@@ -845,9 +837,6 @@ void write_x86(struct ASTNode *node, FILE *file, char* data_section, int data_se
 
     /* Write data section */
     for(int i = 0; i < data_section_size; i++){
-        asmprintf(file, ".data %d\n", i);
-        asmprintf(file, ".byte %d\n", data_section[i]);
-
         opcodes[opcodes_count++] = data_section[i];
     }
     
