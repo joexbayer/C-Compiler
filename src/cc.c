@@ -33,6 +33,8 @@ int cleanup();
 
 static char *current_position;
 static char *last_position;
+static char *keywords = "break case char default else enum if int return sizeof struct switch while "
+                       "__interrupt __inportb __outportb __inportw __outportw __inportl __outport __unused void main";
 
 char *data;
 char *org_data;
@@ -48,6 +50,7 @@ static int token;
 static int ival;
 static int type;
 static int local_offset;
+static int current_enter_size;
 
 static int line;
 
@@ -1116,6 +1119,7 @@ static struct ASTNode *statement() {
             next();
             node = malloc(sizeof(struct ASTNode));
             node->type = AST_RETURN;
+            node->value = current_enter_size;
             if(token != ';'){
                 node->left = expression(Assign);
             } else {
@@ -1126,6 +1130,7 @@ static struct ASTNode *statement() {
                 exit(-1);
             }
             next();
+
 
             return node;
 
@@ -1468,6 +1473,8 @@ struct ASTNode* parse() {
                 enter_node->right = NULL;
                 enter_node->next = NULL;
 
+                current_enter_size = i - local_offset;
+
                 if (!root) {
                     root = enter_node;
                 } else {
@@ -1481,16 +1488,17 @@ struct ASTNode* parse() {
                     current = stmt;
                 }
 
-                struct ASTNode *leave_node = malloc(sizeof(struct ASTNode));
-                leave_node->type = AST_LEAVE;
-                leave_node->value = i - local_offset;
-                leave_node->ident = *func;
-                leave_node->left = NULL;
-                leave_node->right = NULL;
-                leave_node->next = NULL;
+                if(current->type != AST_RETURN) {
+                    struct ASTNode *ret_node = malloc(sizeof(struct ASTNode));
+                    ret_node->type = AST_LEAVE;
+                    ret_node->value = current_enter_size;
+                    ret_node->left = NULL;
+                    ret_node->right = NULL;
+                    ret_node->next = NULL;
 
-                current->next = leave_node;
-                current = leave_node;
+                    current->next = ret_node;
+                    current = ret_node;
+                }
 
                 last_identifier = sym_table;
                 while(last_identifier->tk) {
@@ -1559,8 +1567,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     memset(data, 0, POOL_SIZE);
     memset(type_size, 0, PTR * sizeof(int));
 
-    current_position = "break case char default else enum if int return sizeof struct switch while "
-                       "__interrupt __inportb __outportb __inportw __outportw __inportl __outport __unused void main";
+    current_position = keywords;
 
     /* Read in symbols */
     int i = Break;

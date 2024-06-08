@@ -231,7 +231,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xb6;
                     opcodes[opcodes_count++] = 0xc0;
                     } break;
-                case Lt: {
+                case Gt: {
                     asmprintf(file, "cmpl %%ebx, %%eax\nsetg %%al\nmovzb %%al, %%eax\n");
                     opcodes[opcodes_count++] = 0x39;
                     opcodes[opcodes_count++] = 0xd8;
@@ -242,7 +242,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xb6;
                     opcodes[opcodes_count++] = 0xc0;
                     } break;
-                case Le: {
+                case Ge: {
                     asmprintf(file, "cmpl %%ebx, %%eax\nsetge %%al\nmovzb %%al, %%eax\n");
                     opcodes[opcodes_count++] = 0x39;
                     opcodes[opcodes_count++] = 0xd8;
@@ -253,18 +253,18 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xb6;
                     opcodes[opcodes_count++] = 0xc0;
                     } break;
-                case Gt: {
+               case Lt: {
                     asmprintf(file, "cmpl %%ebx, %%eax\nsetl %%al\nmovzb %%al, %%eax\n");
-                    opcodes[opcodes_count++] = 0x39;
-                    opcodes[opcodes_count++] = 0xd8;
-                    opcodes[opcodes_count++] = 0x0f;
-                    opcodes[opcodes_count++] = 0x9c;
-                    opcodes[opcodes_count++] = 0xc0;
-                    opcodes[opcodes_count++] = 0x0f;
-                    opcodes[opcodes_count++] = 0xb6;
-                    opcodes[opcodes_count++] = 0xc0;
-                    } break;
-                case Ge: {
+                    opcodes[opcodes_count++] = 0x39;   // cmpl %ebx, %eax
+                    opcodes[opcodes_count++] = 0xd8;   
+                    opcodes[opcodes_count++] = 0x0f;   
+                    opcodes[opcodes_count++] = 0x9c;   // setl %al
+                    opcodes[opcodes_count++] = 0xc0;   
+                    opcodes[opcodes_count++] = 0x0f;   
+                    opcodes[opcodes_count++] = 0xb6;   // movzb %al, %eax
+                    opcodes[opcodes_count++] = 0xc0;   
+                } break;
+                case Le: {
                     asmprintf(file, "cmpl %%ebx, %%eax\nsetle %%al\nmovzb %%al, %%eax\n");
                     opcodes[opcodes_count++] = 0x39;
                     opcodes[opcodes_count++] = 0xd8;
@@ -274,6 +274,54 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0x0f;
                     opcodes[opcodes_count++] = 0xb6;
                     opcodes[opcodes_count++] = 0xc0;
+                    } break;
+                case Or: {
+                    asmprintf(file, "orl %%ebx, %%eax\n");
+                    opcodes[opcodes_count++] = 0x09;
+                    opcodes[opcodes_count++] = 0xd8;
+                    } break;
+                case And: {
+                    asmprintf(file, "andl %%ebx, %%eax\n");
+                    opcodes[opcodes_count++] = 0x21;
+                    opcodes[opcodes_count++] = 0xd8;
+                    } break;
+                case Xor: {
+                    asmprintf(file, "xorl %%ebx, %%eax\n");
+                    opcodes[opcodes_count++] = 0x31;
+                    opcodes[opcodes_count++] = 0xd8;
+                    } break;
+                case Shl: {
+                    asmprintf(file, "shll %%cl, %%eax\n");
+                    opcodes[opcodes_count++] = 0xd3;
+                    opcodes[opcodes_count++] = 0xe0;
+                    } break;
+                case Shr: {
+                    asmprintf(file, "shrl %%cl, %%eax\n");
+                    opcodes[opcodes_count++] = 0xd3;
+                    opcodes[opcodes_count++] = 0xe8;
+                    } break;
+                case Mod: {
+                    asmprintf(file, "movl $0, %%edx\n");
+                    asmprintf(file, "idivl %%ebx\n");
+                    asmprintf(file, "movl %%edx, %%eax\n");
+                    opcodes[opcodes_count++] = 0x89;
+                    opcodes[opcodes_count++] = 0xd2;
+                    opcodes[opcodes_count++] = 0xf7;
+                    opcodes[opcodes_count++] = 0xfb;
+                    opcodes[opcodes_count++] = 0x89;
+                    opcodes[opcodes_count++] = 0xc0;
+                    } break;
+                case Dec: {
+                    asmprintf(file, "subl $1, %%eax\n");
+                    opcodes[opcodes_count++] = 0x83;
+                    opcodes[opcodes_count++] = 0xe8;
+                    opcodes[opcodes_count++] = 0x01;
+                    } break;
+                case Inc: {
+                    asmprintf(file, "addl $1, %%eax\n");
+                    opcodes[opcodes_count++] = 0x83;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x01;
                     } break;
                 default:
                     printf("Unknown binary operator %d\n", node->value);
@@ -298,9 +346,11 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xc0;
 
                     break;
-                default:
-                    printf("Unknown unary operator\n");
-                    exit(-1);
+                case Sub:
+                    asmprintf(file, "negl %%eax\n");
+                    opcodes[opcodes_count++] = 0xf7;
+                    opcodes[opcodes_count++] = 0xd8;
+                    break;
             }
             break;
         case AST_FUNCALL:
@@ -415,6 +465,17 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             if (node->left) {
                 generate_x86(node->left, file);
             }
+
+            asmprintf(file, "# Cleaning up stack frame\n");
+            if(node->value > 0){
+                asmprintf(file, "addl $%d, %%esp\n", node->value);
+                GEN_X86_ADD_ESP(node->value);
+            }
+            asmprintf(file, "popl %%ebp\n");
+            asmprintf(file, "ret\n\n");
+
+            GEN_X86_POP_EBP();
+            GEN_X86_RET();
             /* leave and ret is done by AST_LEAVE */
             break;
         case AST_IF: {
