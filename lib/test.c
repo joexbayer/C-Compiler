@@ -9,7 +9,7 @@ void test(int cond){
 }
 
 void assert(int cond){
-    if(!cond){
+    if(cond == 0){
         print("Assertion failed\n", 16);
         exit(1);
     }

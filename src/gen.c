@@ -67,6 +67,8 @@ void generate_bytecode(struct ASTNode *node) {
                 case Xor: *++last_emitted = XOR; break;
                 case Shl: *++last_emitted = SHL; break;
                 case Shr: *++last_emitted = SHR; break;
+                case Mod: *++last_emitted = MOD; break;
+                case Lan: *++last_emitted = AND; break;
                 default:
                     printf("Unknown binary operator %d\n", node->value);
                     exit(-1);

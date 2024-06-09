@@ -37,7 +37,6 @@ int print(char* str, int len) {
     __interrupt(0x80, SYS_WRITE, 1, str, len, 0);
     return 0;
 }
-
 // Function to exit the program using exit system call *
 int exit(int status) {
     __interrupt(0x80, SYS_EXIT, status, 0, 0, 0);

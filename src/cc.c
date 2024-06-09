@@ -983,6 +983,8 @@ static struct ASTNode *expression(int level) {
                 node->left = left;
                 node->data_type = left->data_type - PTR;
                 break;
+            case BrakClose:
+                return node;
             default:
                 printf("%d: compiler error, token = %d\n", line, token);
                 exit(-1);
@@ -1421,6 +1423,7 @@ struct ASTNode* parse() {
                                     exit(-1);
                                 }
                                 last_identifier->array = ival;
+                                last_identifier->array_type = ty;
                                 ty = ty + PTR;
                                 next();
                                 if (token != BrakClose) {

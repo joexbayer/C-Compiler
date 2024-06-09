@@ -89,7 +89,7 @@ and only the offsets are stored.
 With x86 the Data section is located at the start of the file.
 With ELF, its located after the ELF header.
 However, the first 5 bytes are reserved for the JMP to main.
-Access to the data section is dependent on the ORG
+Access to the data section is dependent on the ORG. Note: Big global array declartions will bloat the binary.
 
 ### Bytecode output files
 Added the possibility to output the bytecode to a file and run it later.

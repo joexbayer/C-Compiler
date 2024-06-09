@@ -132,7 +132,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 *((int*)(opcodes + opcodes_count)) = address;
                 opcodes_count += 4;
 
-                asmprintf(file, "movl (%%eax), %%eax\n");
+                asmprintf(file, "movl3 (%%eax), %%eax\n");
                 opcodes[opcodes_count++] = 0x8b;
                 opcodes[opcodes_count++] = 0x00;
                 return;
@@ -158,11 +158,17 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             }
 
             /* Load value if it's not a pointer type */
-            if ((node->ident.type >= INT || node->ident.type > PTR) && node->ident.array == 0) {
-                asmprintf(file, "%s (%%eax), %%eax\n", "movl"); // (node->ident.type == CHAR) ? "movzb" :
+            if ((node->ident.type <= INT || node->ident.type > PTR) && node->ident.array == 0) {
+                asmprintf(file, "%s (%%eax), %%eax\n", (node->ident.type == CHAR) ? "movzb" : "movl"); // 
 
-                opcodes[opcodes_count++] = 0x8b;
-                opcodes[opcodes_count++] = 0x00;
+                if(node->ident.type == CHAR){
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0x00;
+                } else {
+                    opcodes[opcodes_count++] = 0x8b;
+                    opcodes[opcodes_count++] = 0x00;
+                }
             }
             return;
         case AST_BINOP:
@@ -323,6 +329,39 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xc0;
                     opcodes[opcodes_count++] = 0x01;
                     } break;
+                case Lan:{
+                    asmprintf(file, "cmpl $0, %%eax\n");
+                    asmprintf(file, "setne %%al\n");
+                    asmprintf(file, "movzb %%al, %%eax\n");
+
+                    opcodes[opcodes_count++] = 0x83;
+                    opcodes[opcodes_count++] = 0xf8;
+                    opcodes[opcodes_count++] = 0x00;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x94;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+
+                    } break;
+                case Lor:{
+                    asmprintf(file, "cmpl $0, %%eax\n");    
+                    asmprintf(file, "setne %%al\n");
+                    asmprintf(file, "movzb %%al, %%eax\n");
+
+                    opcodes[opcodes_count++] = 0x83;
+                    opcodes[opcodes_count++] = 0xf8;
+                    opcodes[opcodes_count++] = 0x00;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0x95;
+                    opcodes[opcodes_count++] = 0xc0;
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0xc0;
+
+
+                } break;
                 default:
                     printf("Unknown binary operator %d\n", node->value);
                     exit(-1);
@@ -440,7 +479,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 int offset = (int)f->entry - opcodes_count;
                 GEN_X86_CALL(offset-5);
             } else {
-                printf("Unknown x86 function call\n");
+                printf("Unknown x86 function call: %.*s, %d\n", node->ident.name_length, node->ident.name, node->ident.val);
                 exit(-1);
             }
             if (node->left) {
@@ -569,7 +608,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
         case AST_ASSIGN:
 
             if(node->left->type != AST_IDENT && node->left->type != AST_MEMBER_ACCESS && node->left->type != AST_DEREF && node->left->type != AST_ADDR){
-                printf("Left-hand side of assignment must be an identifier or member access 2\n");
+                printf("Assign: Left-hand side of assignment must be an identifier or member access 2\n");
                 exit(-1);
             }
             if(node->right->type == AST_FUNCALL){
@@ -664,9 +703,14 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                         int offset = (node->left->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                         int address = config.org+5 + offset;
 
-                        /* insert constant into address with member offset */
-                        asmprintf(file, "movl $%d, $0x%x\n", node->right->value, address + node->left->member->offset);
-                        opcodes[opcodes_count++] = 0xc7; opcodes[opcodes_count++] = 0x05; *((int*)(opcodes + opcodes_count)) = address + node->left->member->offset; opcodes_count += 4;
+                        /* insert constant into address with member offset */                        
+                        asmprintf(file, "movl $%d, 0x%x\n", node->right->value, address + node->left->member->offset);
+                        opcodes[opcodes_count++] = 0xc7;  /* Opcode for movl with immediate to memory */
+                        opcodes[opcodes_count++] = 0x05;  /* ModR/M byte for direct addressing */
+                        *((unsigned int *)(opcodes + opcodes_count)) = address + node->left->member->offset;  /* Address + offset */
+                        opcodes_count += 4;
+                        *((int *)(opcodes + opcodes_count)) = node->right->value;  /* Immediate value */
+                        opcodes_count += 4;
                     }             
                     else {
                         printf("Unknown identifier class\n");
@@ -690,7 +734,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes_count += 4;                    
 
                 } else {
-                    printf("Left-hand side of assignment must be an identifier or member access\n");
+                    printf("Assign 2: Left-hand side of assignment must be an identifier or member access\n");
                     exit(-1);
                 }
 
@@ -789,7 +833,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 asmprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
             } else {
-                printf("Left-hand side of assignment must be an identifier or member access\n");
+                printf("Assign 3: Left-hand side of assignment must be an identifier or member access\n");
                 exit(-1);
             }
 
@@ -816,20 +860,78 @@ void generate_x86(struct ASTNode *node, FILE *file) {
         case AST_DEREF:
             asmprintf(file, "# Dereference\n");
             generate_x86(node->left, file);
-            asmprintf(file, "movl (%%eax), %%eax\n");
+            asmprintf(file, "movl2 (%%eax), %%eax\n");
             opcodes[opcodes_count++] = 0x8b;
             opcodes[opcodes_count++] = 0x00;
             break;
-        case AST_ADDR:
-            asmprintf(file, "# Reference\n");
-            asmprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
-            opcodes[opcodes_count++] = 0x8d;
-            opcodes[opcodes_count++] = 0x45;
-            opcodes[opcodes_count++] = node->left->value;
-        
-            
+        case AST_ADDR:{
+
+            if(node->left->type != AST_IDENT && node->left->type != AST_MEMBER_ACCESS){
+                generate_x86(node->left, file);
+
+                /* TODO: Very ugly fix */
+                asmprintf(file, "%s (%%eax), %%eax\n", node->left->left->ident.array_type == CHAR ? "movzb" : "movl");
+                if(node->left->left->ident.array_type == CHAR){
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = 0x00;
+                } else {
+                    opcodes[opcodes_count++] = 0x8b;
+                    opcodes[opcodes_count++] = 0x00;
+                }
+
+                return;
+            }
+
+            if(node->left->type == AST_IDENT ){
+                  if(node->left->ident.class == Loc){
+                    asmprintf(file, "# Reference\n");
+                    asmprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
+                    opcodes[opcodes_count++] = 0x8d;
+                    opcodes[opcodes_count++] = 0x45;
+                    opcodes[opcodes_count++] = node->left->value;
+
+                } else if(node->left->ident.class == Glo){
+                    int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                    int address = config.org+5 + offset;
+
+                    asmprintf(file, "# Reference\n");
+                    asmprintf(file, "movl $0x%x, %%eax\n", address);
+                    opcodes[opcodes_count++] = 0xb8;
+                    *((int*)(opcodes + opcodes_count)) = address;
+                    opcodes_count += 4;
+                } else {
+                    printf("Unknown identifier class\n");
+                    exit(-1);
+                }
+                return;
+            } else {
+                if(node->left->left->ident.class == Loc){
+                    asmprintf(file, "# Reference\n");
+                    asmprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset);
+                    opcodes[opcodes_count++] = 0x8d;
+                    opcodes[opcodes_count++] = 0x45;
+                    opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
+                }
+                else if(node->left->left->ident.class == Glo){
+                    int offset = (node->left->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                    int address = config.org+5 + offset;
+
+                    asmprintf(file, "# Reference\n");
+                    asmprintf(file, "movl $0x%x, %%eax\n", address + node->left->member->offset);
+                    opcodes[opcodes_count++] = 0xb8;
+                    *((int*)(opcodes + opcodes_count)) = address + node->left->member->offset;
+                    opcodes_count += 4;
+                } else {
+                    printf("Unknown identifier class\n");
+                    exit(-1);
+                }
+
+            }
+
+          
             //generate_x86(node->left, file);
-            return;
+            }return;
         case AST_ENTER:
             asmprintf(file, "%.*s:\n", node->ident.name_length, node->ident.name);
             asmprintf(file, "# Setting up stack frame %d\n", opcodes_count);
