@@ -1,4 +1,4 @@
-#include "lib/linux.c"
+#include "./lib/linux.c"
 
 void test(int cond){
     if(cond){

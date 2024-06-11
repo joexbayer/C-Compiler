@@ -1,11 +1,39 @@
 // File that tests pointers
-#include "lib/linux.c"
-#include "lib/test.c"
+#include "./lib/linux.c"
+#include "./lib/test.c"
 
 struct data {
     int a;
     int b;
 };
+
+int arithmetics(){
+    int a;
+    char* p;
+    int* r;
+
+    p = 0x1000;
+    r = 0x1000;
+
+    a = 1;
+    
+    test(p + 1 == 0x1001);
+    test(p + 2 == 0x1002);
+    test(p + 3 == 0x1003);
+
+    test(p - 1 == 0x0FFF);
+    test(p - 2 == 0x0FFE);
+    test(p - 3 == 0x0FFD);
+
+    test(r + 1 == 0x1004);
+    test(r + 2 == 0x1008);
+    test(r + 3 == 0x100C);
+
+    test(r - 1 == 0x0FFC);
+    test(r - 2 == 0x0FF8);
+    test(r - 3 == 0x0FF4);
+    
+}
 
 int ext3(struct data* p){
     test(p->a == 1);

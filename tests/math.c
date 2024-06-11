@@ -1,4 +1,4 @@
-#include "lib/test.c"
+#include "./lib/test.c"
 
 // File that tests math operations
 int main(){

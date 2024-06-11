@@ -48,6 +48,23 @@ int read(int fd, char* buf, int count) {
     return __interrupt(0x80, SYS_READ, fd, buf, count, 0);
 }
 
+// Read a line from the standard input
+int scanline(char* buf, int count) {
+    char* tmp;
+    int i;
+    i = 0;
+    while (i < count) {
+        tmp = buf + i;
+        read(0, tmp, 1);
+        if (*tmp == '\n') {
+            *(tmp + 1) = 0;
+            return i + 1;
+        }
+        i = i + 1;
+    }
+    return i;
+}
+
 // Function to open a file using open system call *
 int open(char* filename, int flags, int mode) {
     int fd;

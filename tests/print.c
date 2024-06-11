@@ -1,4 +1,4 @@
-#include "lib/linux.c"
+#include "./lib/linux.c"
 
 int main(){
     print("Passed\n", 7);

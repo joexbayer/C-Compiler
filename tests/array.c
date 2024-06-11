@@ -1,6 +1,5 @@
 #include "./lib/test.c"
 
-
 int main(){
     char a[7];
     int i;

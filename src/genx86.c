@@ -106,6 +106,8 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                  * However, the first 5 bytes are reserved for the JMP to main.
                  */
                 int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+
+                printf("Offset: %d\n", offset);
                 asmprintf(file, "movl $0x%x, %%eax # str\n", (config.org+5) + offset);
                 opcodes[opcodes_count++] = 0xb8;
                 *((int*)(opcodes + opcodes_count)) = (config.org+5) + offset;
