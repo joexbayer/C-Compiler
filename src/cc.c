@@ -214,8 +214,6 @@ static void next() {
             last_identifier->name = position;
             last_identifier->name_length = current_position - position;
 
-            printf("New identifier: %.*s\n", last_identifier->name_length, last_identifier->name);
-
             /* Null terminate name */
             last_identifier->hash = token;
             last_identifier->tk = Id;
@@ -284,6 +282,7 @@ static void next() {
                 break;
             /* Check for string literals */
             case '"':
+            case '\'':
                 /* Write string to data */
                 position = data;
                 while (*current_position != 0 && *current_position != token) {
@@ -301,7 +300,6 @@ static void next() {
                 *data++ = 0; /* Null-terminate the string */
                 ++current_position;
                 if (token == '"') ival = (int) position; else token = Num;
-                printf("0x%x\n", ival);
                 return;
             case '=':
                 /* Check for equality or assignment */
@@ -417,7 +415,6 @@ static struct ASTNode *expression(int level) {
             node = malloc(sizeof(struct ASTNode));
             node->type = AST_STR;
             node->value = ival;
-            printf("2 0x%x\n", ival);
             next();
             while (token == '"') {
                 next();
@@ -1439,7 +1436,7 @@ struct ASTNode* parse() {
 
                             /* Check for duplicate local definition */
                             if (last_identifier->class == Loc) {
-                                printf("%d: duplicate local definition: %.*s\n", line, last_identifier->name_length, last_identifier->name);
+                                printf("%d: duplicate local definition\n", line);
                                 exit(-1);
                                 
                                 /* TODO: handle dupllicate local */
@@ -1449,8 +1446,8 @@ struct ASTNode* parse() {
                             last_identifier->htype = last_identifier->type;
                             last_identifier->hclass = last_identifier->class;
                             last_identifier->hval = last_identifier->val;
-                            last_identifier->type = ty;
                             last_identifier->class = Loc;
+                            last_identifier->type = ty;
 
                             /* Allocate space based on size */
                             last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
