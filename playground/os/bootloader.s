@@ -1,10 +1,3 @@
-/*  Bootloader...
- *
- *   Inspiried by stage0.s in tetris-os by JDH
- *   His video: https://www.youtube.com/watch?v=FaILnmUYS_U&t=647s
- *   Github: https://github.com/jdah/tetris-os
- */
-
 .code16
 .org 0
 .text
@@ -19,7 +12,7 @@ _start:
     mov %ax, %ss
     movw $0x3000, %sp
 
-  
+read:
     movw $20, %cx
     movw $disk_address_packet, %si
     movw $0x1000, segment
@@ -38,6 +31,7 @@ read_loop:
 reading_same_segment:
     loop read_loop
 
+setup:
     call set_a20
 
     /* enable the PE flag */
@@ -58,7 +52,6 @@ setup_gdt:
     movw %ax, %fs
     movw %ax, %gs
     movw %ax, %ss
-    movl $0x3000, %esp
     
     ljmp $0x8, $enter32
 
@@ -82,7 +75,6 @@ set_a20.2:
 
 .code32
 enter32:
-    movw $0x3000, %sp
     movl $0x10000, %eax
     jmpl *%eax
 
@@ -100,15 +92,16 @@ segment:
     .word 0x0000 /* will be set to $0x1000 */
 sector:
     .quad 0x00000000
+
 .align 16
 gdtp:
     .word gdt_end - gdt_start - 1
     .long gdt_start
+
 .align 16
 gdt_start:
 gdt_null:
     .quad 0
-
 code_descriptor:
     .word 0xffff
     .word 0x0000

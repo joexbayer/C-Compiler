@@ -42,6 +42,12 @@ simple: $(OUTPUT)
 	./$(OUTPUT) ./demo/simple.c
 	chmod 777 output.o
 
+os: cc
+	./cc --org 0x10000 os.c
+	make -C playground/os
+	qemu-system-i386.exe playground/os/image.iso -d cpu_reset -D ./log.txt
+
+
 tests: $(OUTPUT)
 	@for file in $(TESTS); do \
 		echo "[TEST $$file]"; \

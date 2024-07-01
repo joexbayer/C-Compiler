@@ -13,3 +13,4 @@ output.asm
 exp
 ast
 .vscode
+log.txt
