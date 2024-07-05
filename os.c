@@ -27,7 +27,7 @@ void vgaput(int x, int y, char c, char color){
     char* vga;
     vga = 0xb8000;
     vga[2 * (y * VGA_WIDTH + x)] = c;
-    vga[2 * (y * VGA_WIDTH + x) + 1] = color;
+    vga[2 * (y * VGA_WIDTH + x) + 1] = color | LIGHT_BLUE << 4;
 }
 
 void clear(){

@@ -288,6 +288,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xd8;
                     } break;
                 case And: {
+                    printf("And: %d\n", node->right->value);
                     asmprintf(file, "andl %%ebx, %%eax\n");
                     opcodes[opcodes_count++] = 0x21;
                     opcodes[opcodes_count++] = 0xd8;
@@ -298,14 +299,23 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xd8;
                     } break;
                 case Shl: {
+                    asmprintf(file, "movl %%ebx, %%ecx\n");
                     asmprintf(file, "shll %%cl, %%eax\n");
+                    opcodes[opcodes_count++] = 0x89;
+                    opcodes[opcodes_count++] = 0xd9;
                     opcodes[opcodes_count++] = 0xd3;
                     opcodes[opcodes_count++] = 0xe0;
                     } break;
                 case Shr: {
-                    asmprintf(file, "shrl %%cl, %%eax\n");
+                    printf("Shr: %d\n", node->right->value);
+                    asmprintf(file, "movl %%ebx, %%ecx\n");
+                    asmprintf(file, "sarl %%cl, %%eax\n");
+                    
+                    opcodes[opcodes_count++] = 0x89;
+                    opcodes[opcodes_count++] = 0xd9;
                     opcodes[opcodes_count++] = 0xd3;
-                    opcodes[opcodes_count++] = 0xe8;
+                    opcodes[opcodes_count++] = 0xf8;
+                    
                     } break;
                 case Mod: {
                     asmprintf(file, "movl $0, %%edx\n");
@@ -360,8 +370,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0x0f;
                     opcodes[opcodes_count++] = 0xb6;
                     opcodes[opcodes_count++] = 0xc0;
-
-
                 } break;
                 default:
                     printf("Unknown binary operator %d\n", node->value);

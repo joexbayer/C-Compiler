@@ -3,24 +3,38 @@
 int main(){
     char a[7];
     int i;
+    char *text;
 
-    a[0] = 'P';
-    a[1] = 'a';
-    a[2] = 's';
-    a[3] = 's';
-    a[4] = 'e';
-    a[5] = 'd';
-    a[6] = '\n';
+    text = "Passed\n";
 
-    print(a, 7);
+    // a[0] = 'P';
+    // a[1] = 'a';
+    // a[2] = 's';
+    // a[3] = 's';
+    // a[4] = 'e';
+    // a[5] = 'd';
+    // a[6] = '\n';
 
-    test(a[0] == 80);
-    test(a[1] == 97);
-    test(a[2] == 115);
-    test(a[3] == 115);
-    test(a[4] == 101);
-    test(a[5] == 100);
-    test(a[6] == 10);
+    // print(a, 7);
+
+    // test(a[0] == 80);
+    // test(a[1] == 97);
+    // test(a[2] == 115);
+    // test(a[3] == 115);
+    // test(a[4] == 101);
+    // test(a[5] == 100);
+    // test(a[6] == 10);
+
+    // print(text, 7);
+
+    test(text[0] == 80);
+    test(text[1] == 97);
+    test(text[2] == 115);
+    test(text[3] == 115);
+    test(text[4] == 101);
+    test(text[5] == 100);
+    test(text[6] == 10);
+    
     
 
     return 0;
