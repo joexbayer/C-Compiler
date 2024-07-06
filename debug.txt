@@ -1,0 +1,55 @@
+
+# Assignment of a pointer to a string
+
+leal -16(%ebp), %eax
+pushl %eax
+# Assignment
+movl $0x8048085, %eax # str
+popl %ebx
+movl %eax, (%ebx)
+
+# arr is stack allocated.
+|---------------------|
+|       ...           | <- higher memory addresses
+|---------------------|
+|   old %ebp          |
+|---------------------| <- %ebp (new base pointer)
+|       ...           | <- space allocated (16 bytes)
+|       ...           |
+|   -12(%ebp)         |
+|       ...           |
+|   -16(%ebp)         |
+|---------------------| <- lower memory addresses (%esp)
+
+
+# arr[0] = 1;
+movl $0, %eax
+pushl %eax
+leal -12(%ebp), %eax
+popl %ebx
+addl %ebx, %eax
+movl $1, (%eax)
+
+# arr[1] = 2;
+movl $1, %eax
+pushl %eax
+leal -12(%ebp), %eax
+popl %ebx
+addl %ebx, %eax
+movl $2, (%eax)
+
+# arr2[0] = 1;
+movl $0, %eax
+pushl %eax
+movl -16(%ebp), %eax
+popl %ebx
+addl %ebx, %eax
+movl $1, (%eax)
+
+# arr2[1] = 1;
+movl $1, %eax
+pushl %eax
+movl -16(%ebp), %eax
+popl %ebx
+addl %ebx, %eax
+movl $2, (%eax)

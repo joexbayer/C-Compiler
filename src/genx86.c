@@ -1,4 +1,3 @@
-
 #include <ast.h>
 #include <func.h>
 #include <stdio.h>
@@ -114,13 +113,21 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             }
             return;
         case AST_IDENT:
-            /* Optimization: use movl directly instead of leal and movl */
             if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)  && node->ident.array == 0){
-                asmprintf(file, "movl %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value);
 
-                opcodes[opcodes_count++] = 0x8b;
-                opcodes[opcodes_count++] = 0x45;
-                opcodes[opcodes_count++] = ADJUST_SIZE(node);
+                if(node->ident.type == CHAR && 0) {
+                    asmprintf(file, "movzbl %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
+                    opcodes[opcodes_count++] = 0x0f;
+                    opcodes[opcodes_count++] = 0xb6;
+                    opcodes[opcodes_count++] = ADJUST_SIZE(node);
+
+                } else {
+                    asmprintf(file, "movl %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
+                    opcodes[opcodes_count++] = 0x8b;
+                    opcodes[opcodes_count++] = 0x45;
+                    opcodes[opcodes_count++] = ADJUST_SIZE(node);
+                }
+                
                 return;
             }
 
@@ -854,9 +861,19 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             asmprintf(file, "popl %%ebx\n");
             GEN_X86_POP_EBX();
 
-            asmprintf(file, "movl %%eax, (%%ebx)\n");
-            opcodes[opcodes_count++] = 0x89;
-            opcodes[opcodes_count++] = 0x03;
+
+            // Fix this for lib.c and tmp.c
+            if(node->data_type == CHAR && 0){
+                asmprintf(file, "movzb %%eax, (%%ebx) # Type %d - %d - %d\n", node->data_type, node->right->ident.type, node->right->type);
+                opcodes[opcodes_count++] = 0x0f;
+                opcodes[opcodes_count++] = 0xb6;
+                opcodes[opcodes_count++] = 0x03;
+            } else {
+                asmprintf(file, "movl %%eax, (%%ebx) # Type %d\n", node->data_type);
+                opcodes[opcodes_count++] = 0x89;
+                opcodes[opcodes_count++] = 0x03;
+            }
+
             break;
         case AST_MEMBER_ACCESS:
             generate_x86(node->left, file);
@@ -869,9 +886,17 @@ void generate_x86(struct ASTNode *node, FILE *file) {
         case AST_DEREF:
             asmprintf(file, "# Dereference\n");
             generate_x86(node->left, file);
-            asmprintf(file, "movl2 (%%eax), %%eax\n");
-            opcodes[opcodes_count++] = 0x8b;
-            opcodes[opcodes_count++] = 0x00;
+
+            if(node->data_type == CHAR){
+                asmprintf(file, "movzb (%%eax), %%eax\n");
+                opcodes[opcodes_count++] = 0x0f;
+                opcodes[opcodes_count++] = 0xb6;
+                opcodes[opcodes_count++] = 0x00;
+            } else {
+                asmprintf(file, "movl2 (%%eax), %%eax\n");
+                opcodes[opcodes_count++] = 0x8b;
+                opcodes[opcodes_count++] = 0x00;
+            }
             break;
         case AST_ADDR:{
 
@@ -879,15 +904,14 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 generate_x86(node->left, file);
 
                 /* TODO: Very ugly fix */
-                asmprintf(file, "%s (%%eax), %%eax\n", node->left->left->ident.array_type == CHAR ? "movzb" : "movl");
+                asmprintf(file, "%s (%%eax), %%eax # array_type %d\n", node->left->left->ident.array_type == CHAR ? "movzb" : "movl2", node->left->left->ident.array_type == CHAR ? CHAR : INT);
                 if(node->left->left->ident.array_type == CHAR){
                     opcodes[opcodes_count++] = 0x0f;
                     opcodes[opcodes_count++] = 0xb6;
-                    opcodes[opcodes_count++] = 0x00;
                 } else {
                     opcodes[opcodes_count++] = 0x8b;
-                    opcodes[opcodes_count++] = 0x00;
                 }
+                opcodes[opcodes_count++] = 0x00;
 
                 return;
             }
@@ -895,10 +919,10 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             if(node->left->type == AST_IDENT ){
                   if(node->left->ident.class == Loc){
                     asmprintf(file, "# Reference\n");
-                    asmprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
+                    asmprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left));
                     opcodes[opcodes_count++] = 0x8d;
                     opcodes[opcodes_count++] = 0x45;
-                    opcodes[opcodes_count++] = node->left->value;
+                    opcodes[opcodes_count++] = ADJUST_SIZE(node->left);
 
                 } else if(node->left->ident.class == Glo){
                     int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);

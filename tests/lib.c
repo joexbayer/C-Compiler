@@ -18,6 +18,8 @@ int scantest(){
 int main(){
     char arr[7];
     char arr2[7];
+    char* text;
+    text = "Passed\n";
 
     memset(arr, 9, 7);
 
@@ -38,6 +40,20 @@ int main(){
     test(arr2[4] == 9);
     test(arr2[5] == 9);
     test(arr2[6] == 9);
+
+    memset(text, 9, 7);
+
+    test(text[0] == 9);
+    test(text[1] == 9);
+    test(text[2] == 9);
+    test(text[3] == 9);
+    test(text[4] == 9);
+    test(text[5] == 9);
+    test(text[6] == 9);
+
+    memset (text, 'F', 7);
+
+    print(text, 7);
 
     scantest();
 

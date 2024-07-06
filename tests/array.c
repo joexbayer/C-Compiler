@@ -1,41 +1,25 @@
 #include "./lib/test.c"
-
 int main(){
-    char a[7];
-    int i;
-    char *text;
-
-    text = "Passed\n";
-
-    // a[0] = 'P';
-    // a[1] = 'a';
-    // a[2] = 's';
-    // a[3] = 's';
-    // a[4] = 'e';
-    // a[5] = 'd';
-    // a[6] = '\n';
-
-    // print(a, 7);
-
-    // test(a[0] == 80);
-    // test(a[1] == 97);
-    // test(a[2] == 115);
-    // test(a[3] == 115);
-    // test(a[4] == 101);
-    // test(a[5] == 100);
-    // test(a[6] == 10);
-
-    // print(text, 7);
-
-    test(text[0] == 80);
-    test(text[1] == 97);
-    test(text[2] == 115);
-    test(text[3] == 115);
-    test(text[4] == 101);
-    test(text[5] == 100);
-    test(text[6] == 10);
+    char arr[3];
+    char* arr2;
+    arr2 = "abc";
     
-    
+    arr[0] = 1;
+    arr[1] = 2;
+    arr[2] = 3;
+
+    test(arr[0] == 1);
+    test(arr[1] == 2);
+    test(arr[2] == 3);
+
+    arr2[0] = 1;
+    arr2[1] = 2;
+    arr2[2] = 3;
+
+    test(arr2[0] == 1);
+    test(arr2[1] == 2);
+    test(arr2[2] == 3);
+
 
     return 0;
 }

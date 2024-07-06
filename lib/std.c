@@ -1,6 +1,6 @@
 #include "./lib/linux.c"
 
-int memset(char* p, int val, int size){
+int memset(char* p, char val, int size){
     int i;
     i = 0;
     while(i < size){

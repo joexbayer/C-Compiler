@@ -23,7 +23,7 @@ enum {
     VGA_HEIGHT = 25,
 };
 
-void vgaput(int x, int y, char c, char color){
+void vgaput(int x, int y, int c, char color){
     char* vga;
     vga = 0xb8000;
     vga[2 * (y * VGA_WIDTH + x)] = c;
@@ -38,6 +38,7 @@ void clear(){
     
     while(y < VGA_HEIGHT){
         while(x < VGA_WIDTH){
+            
             vgaput(x, y, ' ', LIGHT_GRAY);
             x = x + 1;
         }
@@ -50,13 +51,16 @@ int vgaprint() {
     int i;
     char* vga;
     char* text;
-    text = "Hello, World!\n";
+    int c; // currently needs to be int
+    text = "Jello, World!\n";
     vga = 0xb8000;
     
     i = 0;
     while (i < 13) {
-        vga[2 * i] = text[i];
-        vga[2 * i + 1] = LIGHT_GREEN;
+        c = text[i];
+
+        // I cannot directly pass the char...
+        vgaput(i, 0, c, LIGHT_GRAY);
         i = i + 1;
     }
 

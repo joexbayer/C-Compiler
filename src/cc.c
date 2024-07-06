@@ -1354,6 +1354,7 @@ struct ASTNode* parse() {
 
                     while(token == Mul) {
                         next();
+                        
                         ty = ty + PTR;
                     }
 
@@ -1706,7 +1707,7 @@ void print_ast_node(struct ASTNode *node, int indent_level) {
             printf("String: %d\n", node->value);
             break;
         case AST_IDENT:
-            printf("Identifier: %.*s (%d)\n", node->ident.name_length, node->ident.name, node->value);
+            printf("Identifier: %.*s (%d) Type: %d, Array Type: %d\n", node->ident.name_length, node->ident.name, node->value, node->data_type, node->ident.array_type);
             break;
         case AST_BINOP:
             printf("Binop: %d\n", node->value);
@@ -1757,7 +1758,7 @@ void print_ast_node(struct ASTNode *node, int indent_level) {
             printf("MemberAccess: %.*s\n", node->member->ident->name_length, node->member->ident->name);
             break;
         case AST_DEREF:
-            printf("Deref\n");
+            printf("Deref: %d\n", node->data_type);
             break;
         case AST_ADDR:
             printf("Addrref.\n");

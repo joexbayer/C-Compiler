@@ -1,12 +1,30 @@
 #include "./lib/test.c"
 
-int main(){
-    char* test;
-    int res;
+int vgaput(char c){
+    char n;
+    // Here im overwriting the value of n with a INT, corrupting the stack. Somehow...
+    n = c;
 
-    test = "Test\n";
-    res = test[0] == 84;
-    res = test[1] == 101;
+    print(&c, 1);
+
+    return 0;
+}
+
+int main(){
+    int i;
+    char c; // currently needs to be int
+    char* vga;
+    char* text;
+    text = "Hello, World!\n";
+    
+    //vgaput('e');
+    
+    i = 0;
+    c = 0;
+    while (i < 13) {
+        vgaput(text[i]);
+        i = i + 1;
+    }
 
     return 0;
 }
