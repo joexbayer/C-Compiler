@@ -505,6 +505,8 @@ static struct ASTNode *expression(int level) {
                     node->value = local_offset - id->val;
                 } else if(id->class == Glo){
                     node->value = id->val;
+                } else if(id->class == Fun){
+                    node->value = id->val;
                 } else {
                     printf("%d: undefined variable: class %d\n", line, id->class);
                     exit(-1);
@@ -1451,7 +1453,10 @@ struct ASTNode* parse() {
                             last_identifier->type = ty;
 
                             /* Allocate space based on size */
-                            last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
+                            last_identifier->val = i + (
+                                ty >= PTR ? sizeof(int) : (ty == 0 ? 4 : type_size[ty])
+                                ) * (last_identifier->array ? last_identifier->array : 1);
+
                             i = last_identifier->val;
 
                             /* Move to the next token */

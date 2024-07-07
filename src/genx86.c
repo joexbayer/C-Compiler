@@ -115,14 +115,15 @@ void generate_x86(struct ASTNode *node, FILE *file) {
         case AST_IDENT:
             if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)  && node->ident.array == 0){
 
-                if(node->ident.type == CHAR && 0) {
-                    asmprintf(file, "movzbl %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
+                // Checking node value because stack pushed chars are stored as ints
+                if(node->data_type == CHAR && node->value < 0 && 0){ 
+                    asmprintf(file, "movzbl %d(%%ebp), %%eax # Type %d    HERE\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
                     opcodes[opcodes_count++] = 0x0f;
                     opcodes[opcodes_count++] = 0xb6;
                     opcodes[opcodes_count++] = ADJUST_SIZE(node);
 
                 } else {
-                    asmprintf(file, "movl %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
+                    asmprintf(file, "movl3 %d(%%ebp), %%eax # Type %d     HERE\n", node->value > 0 ? node->value*4 : node->value, node->data_type);
                     opcodes[opcodes_count++] = 0x8b;
                     opcodes[opcodes_count++] = 0x45;
                     opcodes[opcodes_count++] = ADJUST_SIZE(node);
@@ -861,10 +862,10 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             asmprintf(file, "popl %%ebx\n");
             GEN_X86_POP_EBX();
 
-
+            printf("Node data: %d, Left type: %d, Right type: %d, left arr: %d. right arr: %d\n",node->left->type, node->left->ident.type, node->right->ident.type, node->left->ident.array_type, node->right->ident.array_type);
             // Fix this for lib.c and tmp.c
-            if(node->data_type == CHAR && 0){
-                asmprintf(file, "movzb %%eax, (%%ebx) # Type %d - %d - %d\n", node->data_type, node->right->ident.type, node->right->type);
+            if(node->data_type == CHAR && node->left->type == AST_IDENT && 0){
+                asmprintf(file, "movzb %%eax, (%%ebx) # Type %d - %d - %d\n", node->data_type, node->left->ident.type, node->left->type);
                 opcodes[opcodes_count++] = 0x0f;
                 opcodes[opcodes_count++] = 0xb6;
                 opcodes[opcodes_count++] = 0x03;
@@ -897,6 +898,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                 opcodes[opcodes_count++] = 0x8b;
                 opcodes[opcodes_count++] = 0x00;
             }
+            return;
             break;
         case AST_ADDR:{
 
@@ -933,6 +935,22 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xb8;
                     *((int*)(opcodes + opcodes_count)) = address;
                     opcodes_count += 4;
+                } else if(node->left->ident.class == Fun){
+
+                    struct function *f = find_function_id(node->left->ident.val);
+                    if (!f) {
+                        printf("Function %.*s not found\n", node->left->ident.name_length, node->left->ident.name);
+                        exit(-1);
+                    }
+
+                    printf("Function %.*s address: 0x%x\n", node->left->ident.name_length, node->left->ident.name, config.org+ (int)f->entry);
+
+                    asmprintf(file, "# Reference\n");
+                    asmprintf(file, "movl $0x%x, %%eax\n", (int)f->entry);
+                    opcodes[opcodes_count++] = 0xb8;
+                    *((int*)(opcodes + opcodes_count)) = (int)f->entry;
+                    opcodes_count += 4;
+                  
                 } else {
                     printf("Unknown identifier class\n");
                     exit(-1);

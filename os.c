@@ -1,3 +1,4 @@
+#include "./lib/std.c"
 
 enum {
     BLACK = 0,
@@ -23,11 +24,11 @@ enum {
     VGA_HEIGHT = 25,
 };
 
-void vgaput(int x, int y, int c, char color){
+void vgaput(int x, int y, char c, char color){
     char* vga;
     vga = 0xb8000;
     vga[2 * (y * VGA_WIDTH + x)] = c;
-    vga[2 * (y * VGA_WIDTH + x) + 1] = color | LIGHT_BLUE << 4;
+    vga[2 * (y * VGA_WIDTH + x) + 1] = color | BLUE << 4;
 }
 
 void clear(){
@@ -38,8 +39,7 @@ void clear(){
     
     while(y < VGA_HEIGHT){
         while(x < VGA_WIDTH){
-            
-            vgaput(x, y, ' ', LIGHT_GRAY);
+            vgaput(x, y, ' ', DARK_GRAY);
             x = x + 1;
         }
         x = 0;
@@ -49,18 +49,16 @@ void clear(){
 
 int vgaprint() {
     int i;
-    char* vga;
     char* text;
-    int c; // currently needs to be int
+    void* vga;
     text = "Jello, World!\n";
-    vga = 0xb8000;
+
+    vga = &vgaprint;
+
     
     i = 0;
     while (i < 13) {
-        c = text[i];
-
-        // I cannot directly pass the char...
-        vgaput(i, 0, c, LIGHT_GRAY);
+        vgaput(i, 0, text[i], WHITE);
         i = i + 1;
     }
 
@@ -69,10 +67,15 @@ int vgaprint() {
 
 int main() {
     int j;
+    char* vga;
+
+    vga = 0xb8000;
 
     clear();
 
     vgaprint();
+
+    //memset(vga, 0, 4000);
 
     j = 0;
     while(j < 1000){
