@@ -54,27 +54,6 @@ struct config {
 };
 extern struct config config;
 
-/**
- * @brief Struct to store the virtual machine state
- * Importantly, the machine has k of stack, and 65k of code.
- * Code and data access is relative to the code and data pointers.
- */
-struct virtual_machine {
-    /* Registers */
-    int *pc;
-    int *bp;
-    int *sp;
-    int ax;
-    
-    int *stack;
-    
-    /* sections */
-    int *code;
-    int *data;
-
-    int cycle;
-};
-
 struct identifier {
     int tk;
     int hash;
@@ -98,10 +77,7 @@ struct member {
     struct member *next;
     int offset;
     int type;
-} ;
-
-extern int *emitted_code;
-extern int *last_emitted;
+};
 
 extern int *entry;
 
@@ -112,8 +88,5 @@ int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t 
 void write_bytecode(const char *filename, int *code, size_t code_size, char *data, size_t data_size, int *main_pc);
 int dbgprintf(const char *fmt, ...);
 int write_elf_header(FILE* file, int entry, int text_size, int data_size);
-
-
-
 
 #endif /* DF579CF4_EFA3_4966_AEE7_98CCF666A06B */

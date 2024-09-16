@@ -31,6 +31,15 @@ void vgaput(int x, int y, char c, char color){
     vga[2 * (y * VGA_WIDTH + x) + 1] = color | BLUE << 4;
 }
 
+void vgastring(int x, int y, char* s, char color){
+    int i;
+    i = 0;
+    while(s[i] != 0){
+        vgaput(x + i, y, s[i], color);
+        i = i + 1;
+    }
+}
+
 void clear(){
     int x;
     int y;
@@ -51,16 +60,13 @@ int vgaprint() {
     int i;
     char* text;
     void* vga;
-    text = "Jello, World!\n";
+    text = "Hello, World!\n";
 
     vga = &vgaprint;
 
-    
-    i = 0;
-    while (i < 13) {
-        vgaput(i, 0, text[i], WHITE);
-        i = i + 1;
-    }
+    vgastring(0, 0, text, WHITE);
+    text = "From my own C-Compiler!\n";
+    vgastring(0, 1, text, WHITE);
 
     return i;
 }

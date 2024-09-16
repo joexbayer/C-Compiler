@@ -90,7 +90,7 @@ int asmprintf(FILE* file, const char *format, ...) {
 
 int derefence = 0;
 int lable_count = 0;
-void generate_x86(struct ASTNode *node, FILE *file) {
+void generate_x86(struct ast_node *node, FILE *file) {
     if (!node) return;
 
     switch (node->type) {
@@ -296,7 +296,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xd8;
                     } break;
                 case And: {
-                    printf("And: %d\n", node->right->value);
                     asmprintf(file, "andl %%ebx, %%eax\n");
                     opcodes[opcodes_count++] = 0x21;
                     opcodes[opcodes_count++] = 0xd8;
@@ -315,7 +314,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
                     opcodes[opcodes_count++] = 0xe0;
                     } break;
                 case Shr: {
-                    printf("Shr: %d\n", node->right->value);
                     asmprintf(file, "movl %%ebx, %%ecx\n");
                     asmprintf(file, "sarl %%cl, %%eax\n");
                     
@@ -413,9 +411,9 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             /* Collect arguments in a list to push them in reverse order */
             asmprintf(file, "# Function call\n");
             if (node->left) {
-                struct ASTNode *args[16]; // assuming a max of 16 args for simplicity
+                struct ast_node *args[16]; // assuming a max of 16 args for simplicity
                 int arg_count = 0;
-                struct ASTNode *arg = node->left;
+                struct ast_node *arg = node->left;
                 while (arg) {
                     if (arg_count >= 16) {
                         printf("Too many arguments for function call\n");
@@ -464,7 +462,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
 
                         int interrupt = 0;
                         // last argument
-                        struct ASTNode *arg = node->left;
+                        struct ast_node *arg = node->left;
                         while (arg->next) {
                             arg = arg->next;
                         }
@@ -501,7 +499,7 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             }
             if (node->left) {
                 int arg_count = 0;
-                struct ASTNode *arg = node->left;
+                struct ast_node *arg = node->left;
                 while (arg) {
                     arg_count++;
                     arg = arg->next;
@@ -862,7 +860,6 @@ void generate_x86(struct ASTNode *node, FILE *file) {
             asmprintf(file, "popl %%ebx\n");
             GEN_X86_POP_EBX();
 
-            printf("Node data: %d, Left type: %d, Right type: %d, left arr: %d. right arr: %d\n",node->left->type, node->left->ident.type, node->right->ident.type, node->left->ident.array_type, node->right->ident.array_type);
             // Fix this for lib.c and tmp.c
             if(node->data_type == CHAR && node->left->type == AST_IDENT && 0){
                 asmprintf(file, "movzb %%eax, (%%ebx) # Type %d - %d - %d\n", node->data_type, node->left->ident.type, node->left->type);
@@ -1039,7 +1036,7 @@ void write_opcodes(){
 }
 
 
-void write_x86(struct ASTNode *node, FILE *file, char* data_section, int data_section_size) {
+void write_x86(struct ast_node *node, FILE *file, char* data_section, int data_section_size) {
 
     opcodes = malloc(1024*1024);
 

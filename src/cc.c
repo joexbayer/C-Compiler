@@ -16,11 +16,9 @@
 #include <cc.h>
 #include <func.h>
 
-int generate(struct ASTNode *node);
-void generate_bytecode(struct ASTNode *node);
-void generate_x86(struct ASTNode *node, FILE *file);
-void print_ast(struct ASTNode *root);
-void write_x86(struct ASTNode *node, FILE *file, char* data_section, int data_section_size);
+void generate_x86(struct ast_node *node, FILE *file);
+void print_ast(struct ast_node *root);
+void write_x86(struct ast_node *node, FILE *file, char* data_section, int data_section_size);
 void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[]);
 int cleanup();
 
@@ -39,10 +37,6 @@ static char *keywords = "break case char default else enum if int return sizeof 
 char *data;
 char *org_data;
 
-int *entry;
-int *emitted_code;
-int *last_emitted;
-
 static int* type_size;
 static int type_new = 0;
 
@@ -58,19 +52,19 @@ static struct identifier *sym_table;
 static struct identifier *last_identifier = {0};
 static struct member *members[MAX_MEMBERS] = {0};
 
-static struct ASTNode *ast_root;
-static struct ASTNode *root = NULL;
-static struct ASTNode *current = NULL;
+static struct ast_node *ast_root;
+static struct ast_node *root = NULL;
+static struct ast_node *current = NULL;
 
 /* Prototypes */
-struct ASTNode *parse();
+struct ast_node *parse();
 static void next();
-static struct ASTNode *expression(int level);
-static struct ASTNode *statement();
+static struct ast_node *expression(int level);
+static struct ast_node *statement();
 static void include(char *file);
-static int free_ast(struct ASTNode *node);
+static int free_ast(struct ast_node *node);
 
-int free_ast(struct ASTNode *node) {
+int free_ast(struct ast_node *node) {
     if (!node) return 0;
     free_ast(node->left);
     free_ast(node->right);
@@ -88,13 +82,10 @@ int dbgprintf(const char *fmt, ...){
     return 0;
 }
 
-
 struct include_file {
     char file[256];
     char* buffer;
-};
-
-static struct include_file includes[32];
+} includes[32];
 static int include_count = 0;
 
 static int find_include(char *file) {
@@ -116,7 +107,6 @@ static int add_include(char *file, char *buffer) {
     return 0;
 }
 
-
 static void include(char *file) {
     int fd, len;
 
@@ -137,7 +127,6 @@ static void include(char *file) {
     original_line = line;
 
     char *include_buffer = malloc(POOL_SIZE);
-
     if (include_buffer == NULL) {
         perror("Failed to allocate memory for include buffer");
         exit(EXIT_FAILURE);
@@ -164,8 +153,6 @@ static void include(char *file) {
             line = original_line;
 
             add_include(file, include_buffer);
-
-            //free(include_buffer);
             return;
         } else {
             perror("Failed to read from file");
@@ -391,10 +378,10 @@ static void next() {
  * @brief Parse an expression and construct an AST node
  * A expression is a sequence of terms separated by + or - operators
  * @param level depth of the expression
- * @return struct ASTNode* - the root of the constructed AST for the expression
+ * @return struct ast_node* - the root of the constructed AST for the expression
  */
-static struct ASTNode *expression(int level) {
-    struct ASTNode *node = NULL, *left, *right;
+static struct ast_node *expression(int level) {
+    struct ast_node *node = NULL, *left, *right;
     int t; /* Temporary register */
     struct identifier *id;
     struct member *m;
@@ -405,14 +392,14 @@ static struct ASTNode *expression(int level) {
             printf("%d: unexpected token EOF of expression\n", line);
             exit(-1);
         case Num:
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_NUM;
             node->value = ival;
             node->data_type = INT;
             next();
             break;
         case '"':
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_STR;
             node->value = ival;
             next();
@@ -431,7 +418,7 @@ static struct ASTNode *expression(int level) {
                 exit(-1);
             }
 
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_NUM;
             node->data_type = INT;
             node->value = 0;
@@ -470,7 +457,7 @@ static struct ASTNode *expression(int level) {
             next();
 
             if(token == '('){
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_FUNCALL;
                 node->ident = *id;
                 node->left = NULL;
@@ -481,7 +468,7 @@ static struct ASTNode *expression(int level) {
                     node->left = expression(Assign);
                     while(token == ','){
                         next();
-                        struct ASTNode *arg = expression(Assign);
+                        struct ast_node *arg = expression(Assign);
                         arg->next = node->left;
                         node->left = arg;
                     }
@@ -490,13 +477,13 @@ static struct ASTNode *expression(int level) {
                 break;
 
             } else if(id->class == Num){
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_NUM;
                 node->value = id->val;
                 node->data_type = id->type;
                 type = id->type;
             } else {
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_IDENT;
                 node->ident = *id;
                 node->data_type = id->type;
@@ -565,7 +552,7 @@ static struct ASTNode *expression(int level) {
         
         case Mul:
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_DEREF;
             node->left = expression(Inc);
             if(node->left->data_type <= INT){
@@ -576,7 +563,7 @@ static struct ASTNode *expression(int level) {
             break; 
         case And:
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_ADDR;
             node->left = expression(Inc);
             node->data_type = node->left->data_type + PTR;
@@ -584,7 +571,7 @@ static struct ASTNode *expression(int level) {
         
         case '!':
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_UNOP;
             node->left = expression(Inc);
             node->data_type = INT;
@@ -593,7 +580,7 @@ static struct ASTNode *expression(int level) {
 
         case '~':
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_UNOP;
             node->left = expression(Inc);
             node->data_type = INT;
@@ -607,7 +594,7 @@ static struct ASTNode *expression(int level) {
         
         case Sub:
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_UNOP;
             node->left = expression(Inc);
             node->data_type = INT;
@@ -620,16 +607,16 @@ static struct ASTNode *expression(int level) {
             next();
             node = expression(Inc);
 
-            struct ASTNode *op_node = malloc(sizeof(struct ASTNode));
+            struct ast_node *op_node = malloc(sizeof(struct ast_node));
             op_node->type = AST_BINOP;
             op_node->left = node;
-            op_node->right = malloc(sizeof(struct ASTNode));
+            op_node->right = malloc(sizeof(struct ast_node));
             op_node->right->type = AST_NUM;
             op_node->right->value = (node->data_type >= PTR2 ? sizeof(int) : (node->data_type >= PTR) ? type_size[node->data_type - PTR] : 1);
             op_node->right->data_type = INT;
             op_node->value = (t == Inc) ? Add : Sub;
 
-            struct ASTNode *assign_node = malloc(sizeof(struct ASTNode));
+            struct ast_node *assign_node = malloc(sizeof(struct ast_node));
             assign_node->type = AST_ASSIGN;
             assign_node->left = node;
             assign_node->right = op_node;
@@ -653,7 +640,7 @@ static struct ASTNode *expression(int level) {
                 next();
                 right = expression(Assign);
 
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_ASSIGN;
                 node->left = left;
                 node->right = right;
@@ -661,11 +648,11 @@ static struct ASTNode *expression(int level) {
                 break;
             case Cond:
                 next();
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->value = Cond;
-                node->right = malloc(sizeof(struct ASTNode));
+                node->right = malloc(sizeof(struct ast_node));
                 node->right->left = expression(Assign);
                 if(token == ':'){
                     next();
@@ -678,7 +665,7 @@ static struct ASTNode *expression(int level) {
             case Lor:
                 next();
                 right = expression(Lan);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -688,7 +675,7 @@ static struct ASTNode *expression(int level) {
             case Lan:
                 next();
                 right = expression(Or);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -699,7 +686,7 @@ static struct ASTNode *expression(int level) {
             case Or:
                 next();
                 right = expression(Xor);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -710,7 +697,7 @@ static struct ASTNode *expression(int level) {
             case Xor:
                 next();
                 right = expression(And);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -721,7 +708,7 @@ static struct ASTNode *expression(int level) {
             case And:
                 next();
                 right = expression(Eq);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -732,7 +719,7 @@ static struct ASTNode *expression(int level) {
             case Eq:
                 next();
                 right = expression(Lt);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -743,7 +730,7 @@ static struct ASTNode *expression(int level) {
             case Ne:
                 next();
                 right = expression(Lt);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -754,7 +741,7 @@ static struct ASTNode *expression(int level) {
             case Lt:
                 next();
                 right = expression(Shl);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -765,7 +752,7 @@ static struct ASTNode *expression(int level) {
             case Gt:
                 next();
                 right = expression(Shl);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -776,7 +763,7 @@ static struct ASTNode *expression(int level) {
             case Le:
                 next();
                 right = expression(Shl);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -787,7 +774,7 @@ static struct ASTNode *expression(int level) {
             case Ge:
                 next();
                 right = expression(Shl);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -798,7 +785,7 @@ static struct ASTNode *expression(int level) {
             case Shl:
                 next();
                 right = expression(Add);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -809,7 +796,7 @@ static struct ASTNode *expression(int level) {
             case Shr:
                 next();
                 right = expression(Add);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -820,7 +807,7 @@ static struct ASTNode *expression(int level) {
             case Add:
                 next();
                 right = expression(Mul);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -831,7 +818,7 @@ static struct ASTNode *expression(int level) {
             case Sub:
                 next();
                 right = expression(Mul);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -841,7 +828,7 @@ static struct ASTNode *expression(int level) {
             case Mul:
                 next();
                 right = expression(Inc);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -852,7 +839,7 @@ static struct ASTNode *expression(int level) {
             case Div:
                 next();
                 right = expression(Inc);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -863,7 +850,7 @@ static struct ASTNode *expression(int level) {
             case Mod:
                 next();
                 right = expression(Inc);
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -876,17 +863,17 @@ static struct ASTNode *expression(int level) {
                 t = token;
                 next();
 
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
-                node->right = malloc(sizeof(struct ASTNode));
+                node->right = malloc(sizeof(struct ast_node));
                 node->right->type = AST_NUM;
                 node->right->value = (left->data_type >= PTR2 ? sizeof(int) : (left->data_type >= PTR) ? type_size[left->data_type - PTR] : 1);
                 node->right->data_type = INT;
                 node->value = (t == Inc) ? Add : Sub;
                 node->data_type = left->data_type;
 
-                struct ASTNode *assign_node = malloc(sizeof(struct ASTNode));
+                struct ast_node *assign_node = malloc(sizeof(struct ast_node));
                 assign_node->type = AST_ASSIGN;
                 assign_node->left = left;
                 assign_node->right = node;
@@ -916,11 +903,11 @@ static struct ASTNode *expression(int level) {
                     exit(-1);
                 }
 
-                struct ASTNode *binop_node = malloc(sizeof(struct ASTNode));
+                struct ast_node *binop_node = malloc(sizeof(struct ast_node));
                 binop_node->type = AST_BINOP;
                 binop_node->left = left; /* Left is the identifier */
 
-                binop_node->right = malloc(sizeof(struct ASTNode));
+                binop_node->right = malloc(sizeof(struct ast_node));
                 binop_node->right->type = AST_NUM;
                 binop_node->right->value = m->offset;
                 binop_node->right->data_type = INT;
@@ -956,10 +943,10 @@ static struct ASTNode *expression(int level) {
 
                 sz = (left->data_type - PTR) >= PTR2 ? sizeof(int) : type_size[left->data_type - PTR];
                 if (sz > 1) {
-                    node = malloc(sizeof(struct ASTNode));
+                    node = malloc(sizeof(struct ast_node));
                     node->type = AST_BINOP;
                     node->left = right;
-                    node->right = malloc(sizeof(struct ASTNode));
+                    node->right = malloc(sizeof(struct ast_node));
                     node->right->type = AST_NUM;
                     node->right->value = sz;
                     node->right->data_type = INT;
@@ -967,7 +954,7 @@ static struct ASTNode *expression(int level) {
                     node->data_type = right->data_type;
                     right = node;
                 }
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 node->type = AST_BINOP;
                 node->left = left;
                 node->right = right;
@@ -976,7 +963,7 @@ static struct ASTNode *expression(int level) {
                 left = node;  /* The left node is now the address calculation result */
 
                 /* Create a dereference node */
-                node = malloc(sizeof(struct ASTNode));
+                node = malloc(sizeof(struct ast_node));
                 if(left->left->ident.array == 0){
                     node->type = AST_DEREF;
                 } else {
@@ -997,8 +984,8 @@ static struct ASTNode *expression(int level) {
 }
 
 
-static struct ASTNode *statement() {
-    struct ASTNode *node, *condition;
+static struct ast_node *statement() {
+    struct ast_node *node, *condition;
 
     switch(token){
         case If:
@@ -1017,10 +1004,10 @@ static struct ASTNode *statement() {
             }
             next();
 
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_IF;
             node->left = condition;
-            node->right = malloc(sizeof(struct ASTNode));
+            node->right = malloc(sizeof(struct ast_node));
             node->right->left = statement();
 
             if(token == Else){
@@ -1048,7 +1035,7 @@ static struct ASTNode *statement() {
             }
             next();
 
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_WHILE;
             node->left = condition;
             node->right = statement();
@@ -1071,7 +1058,7 @@ static struct ASTNode *statement() {
             }
             next();
 
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_SWITCH;
             node->left = condition;
             node->right = statement();
@@ -1080,7 +1067,7 @@ static struct ASTNode *statement() {
         
         case Case:
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_CASE;
             node->left = expression(Or);
             if(token != ':'){
@@ -1100,7 +1087,7 @@ static struct ASTNode *statement() {
             }
             next();
 
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_BREAK;
 
             return node;
@@ -1113,7 +1100,7 @@ static struct ASTNode *statement() {
             }
             next();
 
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_DEFAULT;
             node->left = statement();
 
@@ -1121,7 +1108,7 @@ static struct ASTNode *statement() {
 
         case Return:
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_RETURN;
             node->value = current_enter_size;
             if(token != ';'){
@@ -1140,10 +1127,10 @@ static struct ASTNode *statement() {
 
         case '{':
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_BLOCK;
             node->left = statement();
-            struct ASTNode *current = node->left;
+            struct ast_node *current = node->left;
 
             while(token != '}'){
                 current->next = statement();
@@ -1154,7 +1141,7 @@ static struct ASTNode *statement() {
         
         case ';':
             next();
-            node = malloc(sizeof(struct ASTNode));
+            node = malloc(sizeof(struct ast_node));
             node->type = AST_EXPR_STMT;
             node->left = NULL;
             return node;
@@ -1166,13 +1153,13 @@ static struct ASTNode *statement() {
                 exit(-1);
             }
             next();
-            struct ASTNode *stmt = malloc(sizeof(struct ASTNode));
+            struct ast_node *stmt = malloc(sizeof(struct ast_node));
             stmt->type = AST_EXPR_STMT;
             stmt->left = node;
             return stmt;
     }
 }
-struct ASTNode* parse() {
+struct ast_node* parse() {
     int i;
     int bt;
     int ty;
@@ -1474,7 +1461,7 @@ struct ASTNode* parse() {
                 }
 
                 
-                struct ASTNode *enter_node = malloc(sizeof(struct ASTNode));
+                struct ast_node *enter_node = malloc(sizeof(struct ast_node));
                 enter_node->type = AST_ENTER;
                 enter_node->value = (i - local_offset);
                 enter_node->ident = *func;
@@ -1492,13 +1479,13 @@ struct ASTNode* parse() {
                 current = enter_node;
 
                 while(token != '}') {
-                    struct ASTNode *stmt = statement();
+                    struct ast_node *stmt = statement();
                     current->next = stmt;
                     current = stmt;
                 }
 
                 if(current->type != AST_RETURN) {
-                    struct ASTNode *ret_node = malloc(sizeof(struct ASTNode));
+                    struct ast_node *ret_node = malloc(sizeof(struct ast_node));
                     ret_node->type = AST_LEAVE;
                     ret_node->value = current_enter_size;
                     ret_node->left = NULL;
@@ -1531,22 +1518,22 @@ struct ASTNode* parse() {
     return root;
 }
 
-int run_byte_code(char* filename, int argc, char *argv[]){ 
-    char *data;
-    int main_offset;
-    size_t code_size, data_size;
-    int *pc = read_bytecode(filename, &code_size, &data, &data_size, &main_offset);
-    int *main_pc = (int*)((int)pc + main_offset);
+// int run_byte_code(char* filename, int argc, char *argv[]){ 
+//     char *data;
+//     int main_offset;
+//     size_t code_size, data_size;
+//     int *pc = read_bytecode(filename, &code_size, &data, &data_size, &main_offset);
+//     int *main_pc = (int*)((int)pc + main_offset);
 
-    dbgprintf("Running virtual machine\n");
-    run_virtual_machine(main_pc, pc, data, argc - 2, &argv[2]);
+//     dbgprintf("Running virtual machine\n");
+//     run_virtual_machine(main_pc, pc, data, argc - 2, &argv[2]);
 
-    /* free */
-    free(pc);
-    free(data);
+//     /* free */
+//     free(pc);
+//     free(data);
 
-    return 0;
-}
+//     return 0;
+// }
 
 void compile_and_run(char* filename, int argc, char *argv[]){
     
@@ -1625,50 +1612,17 @@ void compile_and_run(char* filename, int argc, char *argv[]){
         print_ast(ast_root);
 
 
-    if(!config.bytecode_set){
-        /* print out to .s file */
+    // if(!config.bytecode_set){
+    //     /* print out to .s file */
 
 
-        FILE *f = NULL;
-        if(config.assembly_set)
-            f = stdout;
-        
-        write_x86(ast_root, f, org_data, (int)data - (int)org_data);
-        cleanup();
-        return;
-
-    }
-
-    generate(ast_root);
-    main_identifier->val = (int)entry;
-
-    struct timespec end_time;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
-    long diffInNanos = (end_time.tv_sec - start_time.tv_sec) * (long)1e9 + (end_time.tv_nsec - start_time.tv_nsec);
-
-
-    int *pc;
-    if (!(pc = (int *)main_identifier->val)) {
-        printf("main() not defined\n");
-        exit(-1);
-    }
+    FILE *f = NULL;
+    if(config.assembly_set)
+        f = stdout;
     
-    --argc; ++argv;
-
-    run_virtual_machine(pc, emitted_code, org_data, argc, argv);
-    dbgprintf("Compilation time: %ld ns\n", diffInNanos);
-
-    size_t code_size = last_emitted - emitted_code;
-    size_t data_size = data - org_data;
-    int main_offset = (int)(main_identifier->val - (int)emitted_code);
-
-    if(config.bytecode_set){
-        write_bytecode(config.output, emitted_code, code_size, org_data, data_size, &main_offset);
-    }
-    
-
-    free(emitted_code);
+    write_x86(ast_root, f, org_data, (int)data - (int)org_data);
     cleanup();
+    return;
 }
 
 int cleanup(){
@@ -1689,7 +1643,6 @@ int cleanup(){
 
     /* AST */
     free_ast(ast_root);
-
     /* Free include buffer */
     for(int i = 0; i < include_count; i++){
         free(includes[i].buffer);
@@ -1698,7 +1651,7 @@ int cleanup(){
     return 0;
 }
 
-void print_ast_node(struct ASTNode *node, int indent_level) {
+void print_ast_node(struct ast_node *node, int indent_level) {
     if (!node) return;
 
     for (int i = 0; i < indent_level; i++) {
@@ -1791,7 +1744,7 @@ void print_ast_node(struct ASTNode *node, int indent_level) {
     }
 }
 
-void print_ast(struct ASTNode *root) {
+void print_ast(struct ast_node *root) {
     print_ast_node(root, 0);
 }
 
@@ -1879,11 +1832,6 @@ int main(int argc, char *argv[]) {
     if (!config.source) {
         fprintf(stderr, "Input file not specified\n");
         usage(argv);
-    }
-
-    if (config.run) {
-        run_byte_code(config.source, argc, argv);
-        return 0;
     }
 
     compile_and_run(0, argc, argv);

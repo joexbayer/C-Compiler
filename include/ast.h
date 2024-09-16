@@ -4,7 +4,7 @@
 #include <cc.h>
 
 /* AST Node types */
-enum ASTNodeType {
+enum ast_nodeType {
     AST_NUM,
     AST_STR,
     AST_IDENT,
@@ -32,13 +32,13 @@ enum ASTNodeType {
 };
 
 /* AST Node */
-struct ASTNode {
-    enum ASTNodeType type;
+struct ast_node {
+    enum ast_nodeType type;
     int value;
     int data_type;
-    struct ASTNode *left;
-    struct ASTNode *right;
-    struct ASTNode *next;
+    struct ast_node *left;
+    struct ast_node *right;
+    struct ast_node *next;
     struct identifier ident;
     struct member *member;
 };
