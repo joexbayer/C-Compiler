@@ -1,4 +1,4 @@
-CCFLAGS = -Wall -g -m32 -Iinclude
+CCFLAGS = -Wall -g -Iinclude
 LDFLAGS = 
 LD = ld -m elf_i386
 CC = gcc 
@@ -45,7 +45,7 @@ simple: $(OUTPUT)
 os: cc
 	./cc --org 0x10000 os.c
 	make -C playground/os
-	qemu-system-i386.exe playground/os/image.iso -d cpu_reset -D ./log.txt
+	qemu-system-i386 playground/os/image.iso -d cpu_reset -D ./log.txt
 
 
 tests: $(OUTPUT)

@@ -15,6 +15,10 @@
 #include <ast.h>
 #include <cc.h>
 #include <func.h>
+#include <io.h>
+
+#include <unistd.h> /* For open, read, close */
+#include <fcntl.h> /* For open */
 
 void generate_x86(struct ast_node *node, FILE *file);
 void print_ast(struct ast_node *root);
@@ -132,9 +136,9 @@ static void include(char *file) {
         exit(EXIT_FAILURE);
     }
 
-    fd = open(file, O_RDONLY);
+    fd = cc_open(file, O_RDONLY);
     if (fd >= 0) {
-        len = read(fd, include_buffer, POOL_SIZE - 1);
+        len = cc_read(fd, include_buffer, POOL_SIZE - 1);
         if (len > 0) {
             include_buffer[len] = '\0';
             close(fd);  // Close file descriptor after reading
@@ -406,7 +410,8 @@ static struct ast_node *expression(int level) {
             while (token == '"') {
                 next();
             }
-            data = (char *)(((int)data + sizeof(int)) & -sizeof(int));
+            /* The reason for long is that with int it fails on 64bit */
+            data = (char *)(((long)data + sizeof(int)) & -sizeof(int));
             node->data_type = PTR;
             break;
         case Sizeof:
@@ -1518,32 +1523,12 @@ struct ast_node* parse() {
     return root;
 }
 
-// int run_byte_code(char* filename, int argc, char *argv[]){ 
-//     char *data;
-//     int main_offset;
-//     size_t code_size, data_size;
-//     int *pc = read_bytecode(filename, &code_size, &data, &data_size, &main_offset);
-//     int *main_pc = (int*)((int)pc + main_offset);
-
-//     dbgprintf("Running virtual machine\n");
-//     run_virtual_machine(main_pc, pc, data, argc - 2, &argv[2]);
-
-//     /* free */
-//     free(pc);
-//     free(data);
-
-//     return 0;
-// }
-
 void compile_and_run(char* filename, int argc, char *argv[]){
     
-    struct timespec start_time;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time);
-
     int fd;
     struct identifier *main_identifier;
 
-    if ((fd = open(config.source, 0)) < 0) {
+    if ((fd = cc_open(config.source, 0)) < 0) {
         printf("Unable to open source file: %s\n", config.source);
         exit(-1);
     }
@@ -1592,8 +1577,8 @@ void compile_and_run(char* filename, int argc, char *argv[]){
         exit(-1);
     }
 
-    if ((i = read(fd, current_position, POOL_SIZE - 1)) <= 0) {
-        printf("read() returned %d\n", i);
+    if ((i = cc_read(fd, current_position, POOL_SIZE - 1)) <= 0) {
+        printf("cc_read() returned %d\n", i);
         exit(-1);
     }
 
@@ -1620,7 +1605,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     if(config.assembly_set)
         f = stdout;
     
-    write_x86(ast_root, f, org_data, (int)data - (int)org_data);
+    write_x86(ast_root, f, org_data, (int)data - (long)org_data);
     cleanup();
     return;
 }
@@ -1752,11 +1737,9 @@ void print_ast(struct ast_node *root) {
 struct config config = {
     .source = NULL,
     .output = "a.out",
-    .bytecode = NULL,
     .run = 0,
     .argc = 0,
     .argv = NULL,
-    .bytecode_set = 0,
     .assembly_set = 0,
     .elf = 0,
     .org = 0x08048000
@@ -1805,9 +1788,6 @@ int main(int argc, char *argv[]) {
                 break;
             case 'o':
                 config.output = optarg;
-                break;
-            case 'b':
-                config.bytecode_set = 1;
                 break;
             case 'r':
                 config.run = 1;

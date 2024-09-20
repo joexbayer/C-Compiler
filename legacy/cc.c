@@ -401,7 +401,7 @@ static void expression(int level) {
         case '"':
             /* String */
             *++last_emitted = IMD;
-            *++last_emitted = ival-(int)org_data; /* Relative address */
+            *++last_emitted = ival-(long)org_data; /* Relative address */
             next();
             while (token == '"') {
                 next();
@@ -506,7 +506,7 @@ static void expression(int level) {
                 } else if(id->class == Glo){
                     /* Global variable */
                     *++last_emitted = IMD;
-                    *++last_emitted = id->val - (int)org_data;
+                    *++last_emitted = id->val - (long)org_data;
                 } else {
                     printf("%d: undefined variable\n", line);
                     exit(-1);

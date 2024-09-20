@@ -1,5 +1,7 @@
 #include <ast.h>
 #include <func.h>
+#include <io.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -104,7 +106,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                  * With ELF, its located after the ELF header.
                  * However, the first 5 bytes are reserved for the JMP to main.
                  */
-                int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                int offset = (node->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
 
                 asmprintf(file, "movl $0x%x, %%eax # str\n", (config.org+5) + offset);
                 opcodes[opcodes_count++] = 0xb8;
@@ -117,13 +119,13 @@ void generate_x86(struct ast_node *node, FILE *file) {
 
                 // Checking node value because stack pushed chars are stored as ints
                 if(node->data_type == CHAR && node->value < 0 && 0){ 
-                    asmprintf(file, "movzbl %d(%%ebp), %%eax # Type %d    HERE\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
+                    asmprintf(file, "movzbl %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
                     opcodes[opcodes_count++] = 0x0f;
                     opcodes[opcodes_count++] = 0xb6;
                     opcodes[opcodes_count++] = ADJUST_SIZE(node);
 
                 } else {
-                    asmprintf(file, "movl3 %d(%%ebp), %%eax # Type %d     HERE\n", node->value > 0 ? node->value*4 : node->value, node->data_type);
+                    asmprintf(file, "movl3 %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->data_type);
                     opcodes[opcodes_count++] = 0x8b;
                     opcodes[opcodes_count++] = 0x45;
                     opcodes[opcodes_count++] = ADJUST_SIZE(node);
@@ -133,7 +135,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
             }
 
             if(node->ident.class == Glo && (node->ident.type <= INT || node->ident.type >= PTR) && node->ident.array == 0){
-                int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                int offset = (node->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                 int address = config.org+5 + offset;
 
                 asmprintf(file, "movl $0x%x, %%eax\n", address);
@@ -155,7 +157,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                 opcodes[opcodes_count++] = node->value;
                 
             } else if (node->ident.class == Glo) {
-                int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                int offset = (node->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
 
                 asmprintf(file, "movl $0x%x, %%eax\n", config.org+5 + offset);
                 opcodes[opcodes_count++] = 0xb8;
@@ -638,7 +640,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = node->left->value;
                     }
                     else if(node->left->ident.class == Glo){
-                        int offset = (node->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int offset = (node->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                         int address = config.org+5 + offset;
 
                         /* insert %eax into address */
@@ -651,7 +653,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                         opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
                     }
                     else if(node->left->left->ident.class == Glo){
-                        int offset = (node->left->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int offset = (node->left->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                         int address = config.org+5 + offset;
 
                         /* insert %eax into address with member offset */
@@ -679,7 +681,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                         opcodes_count += 4;
 
                     } else if (node->left->ident.class == Glo) {
-                        int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int offset = (node->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                         int address = config.org+5 + offset ;
 
                         /* insert constant into address */
@@ -715,7 +717,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                         opcodes_count += 4;
                     }
                     else if(node->left->left->ident.class == Glo){
-                        int offset = (node->left->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                        int offset = (node->left->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                         int address = config.org+5 + offset;
 
                         /* insert constant into address with member offset */                        
@@ -787,7 +789,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
 
 
                 } else if (node->left->ident.class == Glo) {
-                    int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                    int offset = (node->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                     int address = config.org+5 + offset;
 
                     asmprintf(file, "movl $0x%x, %%eax # Ident\n", address);
@@ -924,7 +926,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                     opcodes[opcodes_count++] = ADJUST_SIZE(node->left);
 
                 } else if(node->left->ident.class == Glo){
-                    int offset = (node->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                    int offset = (node->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                     int address = config.org+5 + offset;
 
                     asmprintf(file, "# Reference\n");
@@ -962,7 +964,7 @@ void generate_x86(struct ast_node *node, FILE *file) {
                     opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
                 }
                 else if(node->left->left->ident.class == Glo){
-                    int offset = (node->left->left->value - (int)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
+                    int offset = (node->left->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
                     int address = config.org+5 + offset;
 
                     asmprintf(file, "# Reference\n");

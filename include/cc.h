@@ -1,13 +1,10 @@
 #ifndef DF579CF4_EFA3_4966_AEE7_98CCF666A06B
 #define DF579CF4_EFA3_4966_AEE7_98CCF666A06B
 
-#include <unistd.h> /* For open, read, close */
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h> /* For memcmp & strcmp */
-#include <fcntl.h> /* For open */
 #include <stdarg.h> /* For va_list */
-#include <time.h>
 
 #define POOL_SIZE 32*1024
 
@@ -31,22 +28,16 @@ enum __BUILTIN {
 };
 
 enum OPCODES {
-    LEA ,IMM ,JMP ,JSR ,BZ  ,BNZ ,ENT ,ADJ ,LEV ,LI  ,LC  ,SI  ,SC  ,PSH ,
-    OR  ,XOR ,AND ,EQ  ,NE  ,LT  ,GT  ,LE   ,GE  ,SHL ,SHR ,ADD ,SUB ,MUL ,DIV ,MOD ,
-    OPEN,READ,CLOS,PRTF,MALC,MSET,MCMP,EXIT, IMD
+    OPEN,READ,CLOS,PRTF,MALC,MSET,MCMP,EXIT
 };
 enum { CHAR, INT, PTR = 256, PTR2 = 512 };
 
 struct config {
     char *source;
     char *output;
-    char *bytecode;
-
     int run;
     int argc;
     char **argv;
-
-    int bytecode_set;
     int assembly_set;
     int elf;
     int org;
