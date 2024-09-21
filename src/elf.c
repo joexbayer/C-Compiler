@@ -75,17 +75,18 @@ static void program_header(Elf32_Phdr *phdr, uint32_t offset, uint32_t vaddr, ui
  * @param data_size The size of the data section
  * @return int 0 on success, -1 on failure
  */
-int write_elf_header(FILE* file, int entry, int text_size, int data_size) {
+int write_elf_header(char* buffer, int entry, int text_size, int data_size) {
     Elf32_Ehdr ehdr;
     Elf32_Phdr phdr;
 
     int org = config.org;
     uint32_t entry_point = org + sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr);
+
     elf_header(&ehdr, entry_point, sizeof(Elf32_Ehdr));
     program_header(&phdr, 0, org, text_size + sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr));
-    fwrite(&ehdr, sizeof(Elf32_Ehdr), 1, file);
-    fwrite(&phdr, sizeof(Elf32_Phdr), 1, file);
+
+    memcpy(buffer, &ehdr, sizeof(Elf32_Ehdr));
+    memcpy(buffer + sizeof(Elf32_Ehdr), &phdr, sizeof(Elf32_Phdr));
 
     return 0;
 }
-

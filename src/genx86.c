@@ -8,6 +8,9 @@
 
 #include <sys/stat.h>  /* Include for chmod */
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #define ELF_HEADER_SIZE 84
 
 /* TODO: Change this... */
@@ -1026,15 +1029,32 @@ void generate_x86(struct ast_node *node, FILE *file) {
 }
 
 void write_opcodes(){
-    FILE *file = fopen(config.output, "wb");
 
-    if(config.elf)
-        write_elf_header(file, config.org, opcodes_count, 0);
+    char* buffer = malloc(1024*1024);
+    int pos = 0;
 
-    fwrite(opcodes, sizeof(uint8_t), opcodes_count, file);
-    fclose(file);
+    int fd = cc_open(config.output, O_CREAT | O_WRONLY);
+    if (fd == -1) {
+        return -1;
+    }
 
+    if (config.elf) {
+        write_elf_header(buffer, config.org, opcodes_count, 0);
+        pos += ELF_HEADER_SIZE;
+    }
+
+    memcpy(buffer + pos, opcodes, opcodes_count);
+    pos += opcodes_count;
+
+    cc_write(fd, buffer, pos);
+
+    cc_close(fd);
+    
     chmod(config.output, 0777);
+
+    free(buffer);
+
+    return 0;
 }
 
 

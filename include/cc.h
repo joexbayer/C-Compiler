@@ -75,9 +75,7 @@ extern int *entry;
 extern char *data;
 extern char *org_data;
 
-int* read_bytecode(const char *filename, size_t *code_size, char **data, size_t *data_size, int *main_pc);
-void write_bytecode(const char *filename, int *code, size_t code_size, char *data, size_t data_size, int *main_pc);
 int dbgprintf(const char *fmt, ...);
-int write_elf_header(FILE* file, int entry, int text_size, int data_size);
+int write_elf_header(char* buffer, int entry, int text_size, int data_size);
 
 #endif /* DF579CF4_EFA3_4966_AEE7_98CCF666A06B */
