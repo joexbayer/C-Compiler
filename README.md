@@ -1,4 +1,7 @@
-# Complete rewrite and extension of c4 (C in four functions) by Robert Swierczek
+# Complete rewrite and extension of c4 (C in four functions) by Robert Swierczek for RetrOS-32
+
+## Mainly used as a submodule for RetrOS-32
+### Checkout the linux branch for version working on linux.
 
 ## Info
 An exercise in minimalism.
@@ -11,7 +14,7 @@ Needs to be compiled with -m32 flag to work as int and pointers are 32 bit.
 
 ## Compile
 
-Compiles to x86 machine code. 
+Compiles to 32bit x86 machine code. 
 
 ## Usage
 To compile 

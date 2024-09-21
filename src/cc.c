@@ -17,12 +17,11 @@
 #include <func.h>
 #include <io.h>
 
-#include <unistd.h> /* For open, read, close */
-#include <fcntl.h> /* For open */
+#include <libc.h>
 
-void generate_x86(struct ast_node *node, FILE *file);
+void generate_x86(struct ast_node *node, void *file);
 void print_ast(struct ast_node *root);
-void write_x86(struct ast_node *node, FILE *file, char* data_section, int data_section_size);
+void write_x86(struct ast_node *node, char* data_section, int data_section_size);
 void run_virtual_machine(int *pc, int* code, char *data, int argc, char *argv[]);
 int cleanup();
 
@@ -132,16 +131,16 @@ static void include(char *file) {
 
     char *include_buffer = malloc(POOL_SIZE);
     if (include_buffer == NULL) {
-        perror("Failed to allocate memory for include buffer");
+        printf("Failed to allocate memory for include buffer");
         exit(EXIT_FAILURE);
     }
 
-    fd = cc_open(file, O_RDONLY);
+    fd = cc_open(file, FS_FILE_FLAG_READ);
     if (fd >= 0) {
         len = cc_read(fd, include_buffer, POOL_SIZE - 1);
         if (len > 0) {
             include_buffer[len] = '\0';
-            close(fd);  // Close file descriptor after reading
+            fclose(fd);  // Close file descriptor after reading
 
             /* Switch to new file */
             current_position = include_buffer;
@@ -159,13 +158,13 @@ static void include(char *file) {
             add_include(file, include_buffer);
             return;
         } else {
-            perror("Failed to read from file");
-            close(fd);  // Ensure file descriptor is closed on error
+            printf("Failed to read from file");
+            fclose(fd);  // Ensure file descriptor is closed on error
             free(include_buffer);
             exit(EXIT_FAILURE);
         }
     } else {
-        perror("Unable to open include file");
+        printf("Unable to open include file");
         free(include_buffer);
         exit(EXIT_FAILURE);
     }
@@ -1528,7 +1527,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     int fd;
     struct identifier *main_identifier;
 
-    if ((fd = cc_open(config.source, 0)) < 0) {
+    if ((fd = cc_open(config.source, FS_FILE_FLAG_READ)) < 0) {
         printf("Unable to open source file: %s\n", config.source);
         exit(-1);
     }
@@ -1583,7 +1582,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     }
 
     current_position[i] = 0;
-    close(fd);
+    fclose(fd);
 
     type_size[type_new++] = sizeof(char);
     type_size[type_new++] = sizeof(int);
@@ -1599,13 +1598,8 @@ void compile_and_run(char* filename, int argc, char *argv[]){
 
     // if(!config.bytecode_set){
     //     /* print out to .s file */
-
-
-    FILE *f = NULL;
-    if(config.assembly_set)
-        f = stdout;
     
-    write_x86(ast_root, f, org_data, (int)data - (long)org_data);
+    write_x86(ast_root, org_data, (int)data - (long)org_data);
     cleanup();
     return;
 }
@@ -1742,48 +1736,32 @@ struct config config = {
     .argv = NULL,
     .assembly_set = 0,
     .elf = 0,
-    .org = 0x08048000
+    .org = 0x1000000
 
 };
 
-#include <getopt.h>
-
 void usage(char *argv[]){
-    fprintf(stderr, "Usage: %s [-o output_file] [-b] [-r] [-s] [--org 0x1000] [--elf] input_file\n", argv[0]);
-    fprintf(stderr, "Options\n");
-    fprintf(stderr, "  -o output_file: Specify output file\n");
-    fprintf(stderr, "  -b: Generate bytecode\n");
-    fprintf(stderr, "  -r: Run bytecode\n");
-    fprintf(stderr, "  -s: Print assembly\n");
-    fprintf(stderr, "  --org 0x1000: Set the origin address\n");
-    fprintf(stderr, "  --elf: Generate ELF file\n");
-    fprintf(stderr, "  --ast: Print AST tree\n");
+    printf("Usage: %s [-o output_file] [-b] [-r] [-s] [--org 0x1000] [--elf] input_file\n", argv[0]);
+    printf("Options\n");
+    printf("  -o output_file: Specify output file\n");
+    printf("  -b: Generate bytecode\n");
+    printf("  -r: Run bytecode\n");
+    printf("  -s: Print assembly\n");
+    printf("  --org 0x1000: Set the origin address\n");
+    printf("  --elf: Generate ELF file\n");
+    printf("  --ast: Print AST tree\n");
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
     int opt;
-
-    /* Define long options */
-    static struct option long_options[] = {
-        {"org", required_argument, 0, 0},
-        {"elf", no_argument, 0, 0},
-        {"ast", no_argument, 0, 0},
-        {0, 0, 0, 0}
-    };
+    char *optarg;
     int long_index = 0;
 
     /* Parse options */
-    while ((opt = getopt_long(argc, argv, "o:brsh", long_options, &long_index)) != -1) {
+    while ((opt = getopt(argc, argv, "o:brsh", &optarg)) != -1) {
         switch (opt) {
             case 0:
-                if (strcmp(long_options[long_index].name, "org") == 0) {
-                    config.org = strtol(optarg, NULL, 0);
-                } else if (strcmp(long_options[long_index].name, "elf") == 0) {
-                    config.elf = 1;
-                } else if (strcmp(long_options[long_index].name, "ast") == 0) {
-                    config.ast = 1;
-                }
 
                 break;
             case 'o':
@@ -1803,14 +1781,11 @@ int main(int argc, char *argv[]) {
     }
 
 
-    /* Get input file */
-    if (optind < argc) {
-        config.source = argv[optind];
-    }
+
+    config.source = "add.c";
 
     /* Check if input file is provided */
     if (!config.source) {
-        fprintf(stderr, "Input file not specified\n");
         usage(argv);
     }
 

@@ -2,14 +2,8 @@
 #include <func.h>
 #include <io.h>
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 
-#include <sys/stat.h>  /* Include for chmod */
-
-#include <fcntl.h>
-#include <unistd.h>
 
 #define ELF_HEADER_SIZE 84
 
@@ -19,15 +13,14 @@ static int* data_section = (int*)0x08048000;
 static uint8_t* opcodes;
 static int opcodes_count = 0;
 
-int asmprintf(FILE* file, const char *format, ...) {
+int asmprintf(void* file, const char *format, ...) {
     va_list args;
     va_start(args, format);
 
-    if(file){
-        vfprintf(file, format, args);
-    }
+    printf(format, args);
 
     va_end(args);
+
     return 0;
 }
 
@@ -95,7 +88,7 @@ int asmprintf(FILE* file, const char *format, ...) {
 
 int derefence = 0;
 int lable_count = 0;
-void generate_x86(struct ast_node *node, FILE *file) {
+void generate_x86(struct ast_node *node, void* *file) {
     if (!node) return;
 
     switch (node->type) {
@@ -1033,8 +1026,9 @@ void write_opcodes(){
     char* buffer = malloc(1024*1024);
     int pos = 0;
 
-    int fd = cc_open(config.output, O_CREAT | O_WRONLY);
-    if (fd == -1) {
+    int fd = cc_open(config.output, FS_FILE_FLAG_WRITE | FS_FILE_FLAG_CREATE);
+    if (fd == -1) { 
+        printf("Failed to open output file\n");
         return -1;
     }
 
@@ -1047,18 +1041,16 @@ void write_opcodes(){
     pos += opcodes_count;
 
     cc_write(fd, buffer, pos);
-
     cc_close(fd);
-    
-    chmod(config.output, 0777);
-
     free(buffer);
 
     return 0;
 }
 
 
-void write_x86(struct ast_node *node, FILE *file, char* data_section, int data_section_size) {
+void write_x86(struct ast_node *node, char* data_section, int data_section_size) {
+
+    void* file = NULL;
 
     opcodes = malloc(1024*1024);
 
@@ -1073,7 +1065,7 @@ void write_x86(struct ast_node *node, FILE *file, char* data_section, int data_s
         opcodes[opcodes_count++] = data_section[i];
     }
     
-    generate_x86(node, file);
+    generate_x86(node, NULL);
 
     asmprintf(file, ".globl _start\n");
     asmprintf(file, "_start:\n");
@@ -1097,10 +1089,10 @@ void write_x86(struct ast_node *node, FILE *file, char* data_section, int data_s
     GEN_X86_EAX_EBX();
 
     asmprintf(file, "movl $1, %%eax\n");
-    GEN_X86_IMD_EAX(1);
+    GEN_X86_IMD_EAX(3);
 
     asmprintf(file, "int $0x80\n");
-    GEN_X86_INT(0x80);
+    GEN_X86_INT(0x30);
 
     write_opcodes();
 }

@@ -1,10 +1,11 @@
 #ifndef DF579CF4_EFA3_4966_AEE7_98CCF666A06B
 #define DF579CF4_EFA3_4966_AEE7_98CCF666A06B
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <memory.h> /* For memcmp & strcmp */
-#include <stdarg.h> /* For va_list */
+#include <args.h> /* For va_list */
+#include <libc.h>
+#include <lib/syscall.h>
+#include <lib/printf.h>
+#include <fs/fs.h>
 
 #define POOL_SIZE 32*1024
 
