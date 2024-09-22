@@ -7,19 +7,16 @@
 
 #define ELF_HEADER_SIZE 84
 
-/* TODO: Change this... */
-static int* data_section = (int*)0x08048000;
-
 static uint8_t* opcodes;
 static int opcodes_count = 0;
 
 int asmprintf(void* file, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
+    // va_list args;
+    // va_start(args, format);
 
-    printf(format, args);
+    // printf(format, args);
 
-    va_end(args);
+    // va_end(args);
 
     return 0;
 }
@@ -196,7 +193,7 @@ void generate_x86(struct ast_node *node, void* *file) {
 
             switch (node->value) {
                 case Add: {
-                    asmprintf(file, "addl %%ebx, %%eax\n");
+                    asmprintf(file, "addl HERE%%ebx, %%eax\n");
                     opcodes[opcodes_count++] = 0x01;
                     opcodes[opcodes_count++] = 0xd8;
                     }break;
@@ -1052,7 +1049,8 @@ void write_x86(struct ast_node *node, char* data_section, int data_section_size)
 
     void* file = NULL;
 
-    opcodes = malloc(1024*1024);
+    opcodes = malloc(32*1024);
+    memset(opcodes, 0, 32*1024);
 
     /* Prepare jump to _start */
     opcodes[opcodes_count++] = 0xe9;
@@ -1071,6 +1069,8 @@ void write_x86(struct ast_node *node, char* data_section, int data_section_size)
     asmprintf(file, "_start:\n");
     asmprintf(file, "call main\n");
     /* Call absoulute address */
+
+    printf("CC: Done generating x86\n");
 
     struct function *f = find_function_name("main", 4);
     if (!f) {
