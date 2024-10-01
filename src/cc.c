@@ -1591,9 +1591,9 @@ void compile_and_run(char* filename, int argc, char *argv[]){
 
     dbgprintf("CC: Done parsing\n");
 
-
-    // if(!config.bytecode_set){
-    //     /* print out to .s file */
+    if(config.ast) {
+        print_ast(ast_root);
+    }
     
     write_x86(ast_root, org_data, (int)data - (long)org_data);
     
@@ -1644,7 +1644,7 @@ void print_ast_node(struct ast_node *node, int indent_level) {
             printf("String: %d\n", node->value);
             break;
         case AST_IDENT:
-            printf("Identifier: %.*s (%d) Type: %d, Array Type: %d\n", node->ident.name_length, node->ident.name, node->value, node->data_type, node->ident.array_type);
+            printf("Identifier: %.*s \n", node->ident.name_length, node->ident.name);
             break;
         case AST_BINOP:
             printf("Binop: %d\n", node->value);
@@ -1736,25 +1736,48 @@ struct config config = {
     .argv = NULL,
     .assembly_set = 0,
     .elf = 0,
-    .org = 0x1000000
-
+    .org = 0x1000000,
+    .ast = 0  
 };
 
 void usage(char *argv[]){
-    printf("Usage: %s [-o output_file] [-b] [-r] [-s] [--org 0x1000] [--elf] input_file\n", argv[0]);
+    printf("Usage: %s input_file [-o output_file [-s] [--org 0x1000] \n", argv[0]);
     printf("Options\n");
+    printf("  input_file: Must be first argument!\n");
     printf("  -o output_file: Specify output file\n");
-    printf("  -b: Generate bytecode\n");
-    printf("  -r: Run bytecode\n");
     printf("  -s: Print assembly\n");
     printf("  --org 0x1000: Set the origin address\n");
-    printf("  --elf: Generate ELF file\n");
     printf("  --ast: Print AST tree\n");
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
     config.source = "add.c";
+
+    if(argc < 2){
+        usage(argv);
+        return 0;
+    }
+    config.source = argv[1];
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-') {
+            if (argv[i][1] == 'o' && i + 1 < argc) {
+                config.output = argv[++i];
+            } else if (argv[i][1] == 's') {
+                config.assembly_set = 1;
+            } else if (argv[i][1] == '-' && argv[i][2] == 'o' && argv[i][3] == 'r' && argv[i][4] == 'g' && i + 1 < argc) {
+                //config.org = strtol(argv[++i], NULL, 0);
+                printf("Error: org not supported\n");
+                exit(-1);
+            } else if (argv[i][1] == '-' && argv[i][2] == 'a' && argv[i][3] == 's' && argv[i][4] == 't') {
+                config.ast = 1;
+            } else {
+                usage(argv);
+            }
+        } else {
+            config.source = argv[i];
+        }
+    }
 
     /* Check if input file is provided */
     if (!config.source) {

@@ -11,12 +11,15 @@ static uint8_t* opcodes;
 static int opcodes_count = 0;
 
 int asmprintf(void* file, const char *format, ...) {
-    // va_list args;
-    // va_start(args, format);
 
-    // printf(format, args);
+    if(!config.assembly_set) return 0;
 
-    // va_end(args);
+    va_list args;
+    va_start(args, format);
+
+    printf(format, args);
+
+    va_end(args);
 
     return 0;
 }
@@ -1068,9 +1071,7 @@ void write_x86(struct ast_node *node, char* data_section, int data_section_size)
     asmprintf(file, ".globl _start\n");
     asmprintf(file, "_start:\n");
     asmprintf(file, "call main\n");
-    /* Call absoulute address */
-
-    printf("CC: Done generating x86\n");
+    /* Call absoulute address */ 
 
     struct function *f = find_function_name("main", 4);
     if (!f) {
