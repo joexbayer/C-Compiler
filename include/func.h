@@ -4,7 +4,7 @@
 #define MAX_FUNCTIONS 256
 struct function {
     int id;
-    char name[25];
+    char name[64];
     int* entry;
 };
 

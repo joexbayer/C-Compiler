@@ -17,7 +17,9 @@
 #include <func.h>
 #include <io.h>
 
+#ifndef NATIVE
 #include <libc.h>
+#endif
 
 void generate_x86(struct ast_node *node, void *file);
 void print_ast(struct ast_node *root);
@@ -134,12 +136,18 @@ static void include(char *file) {
         exit(EXIT_FAILURE);
     }
 
-    fd = cc_open(file, FS_FILE_FLAG_READ);
+    fd = cc_open(file,
+#ifndef NATIVE
+        FS_FILE_FLAG_READ
+#else
+        O_RDONLY
+#endif
+    );
     if (fd >= 0) {
         len = cc_read(fd, include_buffer, POOL_SIZE - 1);
         if (len > 0) {
             include_buffer[len] = '\0';
-            fclose(fd);  // Close file descriptor after reading
+            cc_close(fd);  // Close file descriptor after reading
 
             /* Switch to new file */
             current_position = include_buffer;
@@ -160,7 +168,7 @@ static void include(char *file) {
             return;
         } else {
             printf("Failed to read from file");
-            fclose(fd);  // Ensure file descriptor is closed on error
+            cc_close(fd);  // Ensure file descriptor is closed on error
             free(include_buffer);
             exit(EXIT_FAILURE);
         }
@@ -465,6 +473,7 @@ static struct ast_node *expression(int level) {
                 node = zmalloc(sizeof(struct ast_node));
                 node->type = AST_FUNCALL;
                 node->ident = *id;
+                node->ident.class = Fun;
                 node->left = NULL;
                 node->right = NULL;
 
@@ -1171,6 +1180,7 @@ struct ast_node* parse() {
     int mbt;
     struct member *m;
     struct identifier* func;
+    struct identifier* current_struct;
 
 
     while(token) {
@@ -1220,6 +1230,8 @@ struct ast_node* parse() {
                 bt = type_new++;
             }
 
+            current_struct = last_identifier;
+
             if(token == '{') {
                 next();
                 if(members[bt]) {
@@ -1252,8 +1264,67 @@ struct ast_node* parse() {
                             ty = ty + PTR;
                         }
 
+                        if(token == '('){
+
+                            char* name = zmalloc(64);
+                            strncpy(name, current_struct->name, current_struct->name_length);
+                            strncat(name, "_", 1);
+                            strncat(name, last_identifier->name, last_identifier->name_length);
+                            last_identifier->name = name;
+                            last_identifier->name_length = strlen(name) + 1 + current_struct->name_length;
+
+                            last_identifier->class = Fun;
+                            last_identifier->val = function_id++;
+                            add_function(last_identifier->val, last_identifier->name, last_identifier->name_length, NULL);
+                            
+                            func = last_identifier;
+
+                            next();
+                            if(token != ')'){
+                                printf("%d: bad function definition\n", line);
+                                exit(-1);
+                            }
+                            next();
+                            if(token != '{'){
+                                printf("%d: bad function definition\n", line);
+                                exit(-1);
+                            }
+                            next();
+                            
+                            struct ast_node *enter_node = zmalloc(sizeof(struct ast_node));
+                            enter_node->type = AST_ENTER;
+                            enter_node->value = 0;
+                            enter_node->ident = *func;
+                            if (!root) {
+                                root = enter_node;
+                            } else {
+                                current->next = enter_node;
+                            }
+                            current = enter_node;
+
+                            while(token != '}') {
+                                struct ast_node *stmt = statement();
+                                current->next = stmt;
+                                current = stmt;
+                            }
+
+                            if(current->type != AST_RETURN) {
+                                struct ast_node *ret_node = zmalloc(sizeof(struct ast_node));
+                                ret_node->type = AST_LEAVE;
+                                ret_node->value = 0;
+
+                                current->next = ret_node;
+                                current = ret_node;
+                            }
+
+                            next();
+                            
+
+                            continue;
+                        }
+
                         if(token != Id) {
-                            printf("%d: bad struct member\n", line);
+                            printf("%d: bad struct member %c (%d)\n", line, token, token);
                             exit(-1);
                         }
 
@@ -1470,9 +1541,6 @@ struct ast_node* parse() {
                 enter_node->type = AST_ENTER;
                 enter_node->value = (i - local_offset);
                 enter_node->ident = *func;
-                enter_node->left = NULL;
-                enter_node->right = NULL;
-                enter_node->next = NULL;
 
                 current_enter_size = i - local_offset;
 
@@ -1493,9 +1561,6 @@ struct ast_node* parse() {
                     struct ast_node *ret_node = zmalloc(sizeof(struct ast_node));
                     ret_node->type = AST_LEAVE;
                     ret_node->value = current_enter_size;
-                    ret_node->left = NULL;
-                    ret_node->right = NULL;
-                    ret_node->next = NULL;
 
                     current->next = ret_node;
                     current = ret_node;
@@ -1528,7 +1593,14 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     int fd;
     struct identifier *main_identifier;
 
-    if ((fd = cc_open(config.source, FS_FILE_FLAG_READ)) < 0) {
+    if ((fd = cc_open(config.source,
+#ifndef NATIVE
+        FS_FILE_FLAG_READ
+#else
+        O_RDONLY
+#endif
+    )) < 0)
+    {
         printf("Unable to open source file: %s\n", config.source);
         exit(-1);
     }
@@ -1579,7 +1651,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     }
 
     current_position[i] = 0;
-    fclose(fd);
+    cc_close(fd);
 
     type_size[type_new++] = sizeof(char);
     type_size[type_new++] = sizeof(int);
@@ -1735,18 +1807,22 @@ struct config config = {
     .argc = 0,
     .argv = NULL,
     .assembly_set = 0,
+#ifndef NATIVE
     .elf = 0,
     .org = 0x1000000,
+#else
+    .elf = 1,
+    .org = 0x08048000,
+#endif
     .ast = 0  
 };
 
 void usage(char *argv[]){
-    printf("Usage: %s input_file [-o output_file [-s] [--org 0x1000] \n", argv[0]);
+    printf("Usage: %s input_file -o output_file [-s]\n", argv[0]);
     printf("Options\n");
     printf("  input_file: Must be first argument!\n");
     printf("  -o output_file: Specify output file\n");
     printf("  -s: Print assembly\n");
-    printf("  --org 0x1000: Set the origin address\n");
     printf("  --ast: Print AST tree\n");
     exit(EXIT_FAILURE);
 }

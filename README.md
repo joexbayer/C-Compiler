@@ -22,21 +22,25 @@ To compile
 make
 ```
 
+### For Linux
+```bash
+make -f Makefile.linux
 ```
-Usage: ./cc [-o output_file] [-b] [-r] [-s] [--org 0x1000] [--elf] input_file
+
+```
+Usage: ./cc input_file -o output_file [-s]
 Options
+  input_file: Must be first argument!
   -o output_file: Specify output file
   -s: Print assembly
-  --org 0x1000: Set the origin address
-  --elf: Generate ELF file
   --ast: Print AST tree
 ```
 
 Example:
 
 ```bash
-./cc --elf -o output.o test.c
-./output.o
+./cc -o demo.o demo.c
+./demo.o
 ```
 
 ## Changes
@@ -67,7 +71,7 @@ int add(int a, int b) {
 
 main.c:
 ```c
-#include <math..h>
+#include "lib/math.c"
 
 int main() {
     int a;

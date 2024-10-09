@@ -9,13 +9,22 @@ int cc_read(int fd, char *buffer, int size) {
 }
 
 int cc_close(int fd) {
+#ifdef NATIVE
+    return close(fd);
+#else
     return fclose(fd);
+#endif
 }
 
 void cc_write(int fd, char *buffer, int size) {
     write(fd, buffer, size);
 }
 
+#ifdef NATIVE
+void *zmalloc(int size) {
+    return malloc(size);
+}
+#endif
 
 
 

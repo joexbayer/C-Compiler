@@ -12,12 +12,18 @@ static int opcodes_count = 0;
 
 int asmprintf(void* file, const char *format, ...) {
 
-    if(!config.assembly_set) return 0;
+    if(config.assembly_set == 0){
+        return 0;
+    }
+
 
     va_list args;
     va_start(args, format);
-
+#ifdef NATIVE
+    vprintf(format, args);
+#else
     printf(format, args);
+#endif
 
     va_end(args);
 
@@ -492,7 +498,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 int offset = (int)f->entry - opcodes_count;
                 GEN_X86_CALL(offset-5);
             } else {
-                printf("Unknown x86 function call: %.*s, %d\n", node->ident.name_length, node->ident.name, node->ident.val);
+                printf("Unknown x86 function call: %.*s, %d\n", node->ident.name_length, node->ident.name, node->ident.class);
                 exit(-1);
             }
             if (node->left) {
@@ -979,6 +985,7 @@ void generate_x86(struct ast_node *node, void* *file) {
             //generate_x86(node->left, file);
             }return;
         case AST_ENTER:
+            //printf("Enter %p\n", node);
             asmprintf(file, "%.*s:\n", node->ident.name_length, node->ident.name);
             asmprintf(file, "# Setting up stack frame %d\n", opcodes_count);
             asmprintf(file, "pushl %%ebp\n");
@@ -1026,16 +1033,23 @@ void write_opcodes(){
     char* buffer = malloc(1024*1024);
     int pos = 0;
 
-    int fd = cc_open(config.output, FS_FILE_FLAG_WRITE | FS_FILE_FLAG_CREATE);
+    int fd = cc_open(config.output,
+#ifndef NATIVE
+        FS_FILE_FLAG_WRITE | FS_FILE_FLAG_CREATE
+#else
+        O_WRONLY | O_CREAT
+#endif
+    );
+    
     if (fd == -1) { 
         printf("Failed to open output file\n");
         return -1;
     }
 
-    if (config.elf) {
-        write_elf_header(buffer, config.org, opcodes_count, 0);
-        pos += ELF_HEADER_SIZE;
-    }
+#ifdef NATIVE
+    write_elf_header(buffer, config.org, opcodes_count, 0);
+    pos += ELF_HEADER_SIZE;
+#endif
 
     memcpy(buffer + pos, opcodes, opcodes_count);
     pos += opcodes_count;
@@ -1090,10 +1104,17 @@ void write_x86(struct ast_node *node, char* data_section, int data_section_size)
     GEN_X86_EAX_EBX();
 
     asmprintf(file, "movl $1, %%eax\n");
-    GEN_X86_IMD_EAX(3);
-
     asmprintf(file, "int $0x80\n");
+
+#ifdef NATIVE
+    GEN_X86_IMD_EAX(1);
+    GEN_X86_INT(0x80);
+#else
+    GEN_X86_IMD_EAX(3);
     GEN_X86_INT(0x30);
+#endif
+
+
 
     write_opcodes();
 }

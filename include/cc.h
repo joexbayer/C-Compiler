@@ -1,11 +1,27 @@
 #ifndef DF579CF4_EFA3_4966_AEE7_98CCF666A06B
 #define DF579CF4_EFA3_4966_AEE7_98CCF666A06B
 
+#ifdef NATIVE
+#define _GNU_SOURCE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+void *zmalloc(int size);
+
+#else
+
 #include <args.h> /* For va_list */
 #include <libc.h>
 #include <lib/syscall.h>
 #include <lib/printf.h>
 #include <fs/fs.h>
+
+#endif
 
 #define POOL_SIZE 32*1024
 
