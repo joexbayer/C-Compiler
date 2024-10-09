@@ -1,6 +1,6 @@
 ROOT = ../../
 CCFLAGS = -Wall -ggdb -Iinclude -std=gnu11 -O1 -DNATIVE \
-		-Wall -Wextra -Wpedantic -Wstrict-aliasing -m32
+		-Wall -Wextra -Wpedantic -Wstrict-aliasing
 LDFLAGS = 
 LD = ld
 CC = gcc 

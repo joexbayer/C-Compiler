@@ -473,7 +473,6 @@ static struct ast_node *expression(int level) {
                 node = zmalloc(sizeof(struct ast_node));
                 node->type = AST_FUNCALL;
                 node->ident = *id;
-                node->ident.class = Fun;
                 node->left = NULL;
                 node->right = NULL;
 
@@ -1266,12 +1265,12 @@ struct ast_node* parse() {
 
                         if(token == '('){
 
-                            char* name = zmalloc(64);
-                            strncpy(name, current_struct->name, current_struct->name_length);
-                            strncat(name, "_", 1);
-                            strncat(name, last_identifier->name, last_identifier->name_length);
-                            last_identifier->name = name;
-                            last_identifier->name_length = strlen(name) + 1 + current_struct->name_length;
+                            // char* name = zmalloc(64);
+                            // strncpy(name, current_struct->name, current_struct->name_length);
+                            // strncat(name, "_", 1);
+                            // strncat(name, last_identifier->name, last_identifier->name_length);
+                            // last_identifier->name = name;
+                            // last_identifier->name_length = strlen(name) + 1 + current_struct->name_length;
 
                             last_identifier->class = Fun;
                             last_identifier->val = function_id++;
