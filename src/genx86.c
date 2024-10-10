@@ -1,9 +1,11 @@
+#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
+
 #include <ast.h>
 #include <func.h>
 #include <io.h>
 
 #include <stdint.h>
-
 
 #define ELF_HEADER_SIZE 84
 
@@ -11,11 +13,9 @@ static uint8_t* opcodes;
 static int opcodes_count = 0;
 
 int asmprintf(void* file, const char *format, ...) {
-
     if(config.assembly_set == 0){
         return 0;
     }
-
 
     va_list args;
     va_start(args, format);
@@ -26,7 +26,6 @@ int asmprintf(void* file, const char *format, ...) {
 #endif
 
     va_end(args);
-
     return 0;
 }
 
@@ -430,8 +429,8 @@ void generate_x86(struct ast_node *node, void* *file) {
                 for (int i = arg_count - 1; i >= 0; i--) {
                     arg = args[i];
                     generate_x86(arg, file);
+                    
                     asmprintf(file, "pushl %%eax\n");
-
                     opcodes[opcodes_count++] = 0x50;
                 }
             }
@@ -1030,7 +1029,12 @@ void generate_x86(struct ast_node *node, void* *file) {
 
 void write_opcodes(){
 
-    char* buffer = malloc(1024*1024);
+    char* buffer = malloc(32*1024);
+    if(!buffer){
+        printf("Failed to allocate memory for buffer\n");
+        exit(-1);
+    }
+
     int pos = 0;
 
     int fd = cc_open(config.output,
@@ -1043,7 +1047,7 @@ void write_opcodes(){
     
     if (fd == -1) { 
         printf("Failed to open output file\n");
-        return -1;
+        return;
     }
 
 #ifdef NATIVE
@@ -1058,15 +1062,18 @@ void write_opcodes(){
     cc_close(fd);
     free(buffer);
 
-    return 0;
+    return;
 }
 
 
 void write_x86(struct ast_node *node, char* data_section, int data_section_size) {
-
     void* file = NULL;
 
     opcodes = malloc(32*1024);
+    if (!opcodes) {
+        printf("Failed to allocate memory for opcodes\n");
+        exit(-1);
+    }
     memset(opcodes, 0, 32*1024);
 
     /* Prepare jump to _start */
@@ -1078,8 +1085,7 @@ void write_x86(struct ast_node *node, char* data_section, int data_section_size)
     /* Write data section */
     for(int i = 0; i < data_section_size; i++){
         opcodes[opcodes_count++] = data_section[i];
-    }
-    
+    }    
     generate_x86(node, NULL);
 
     asmprintf(file, ".globl _start\n");
@@ -1113,8 +1119,6 @@ void write_x86(struct ast_node *node, char* data_section, int data_section_size)
     GEN_X86_IMD_EAX(3);
     GEN_X86_INT(0x30);
 #endif
-
-
 
     write_opcodes();
 }

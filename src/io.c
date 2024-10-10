@@ -21,7 +21,7 @@ void cc_write(int fd, char *buffer, int size) {
 }
 
 #ifdef NATIVE
-void *zmalloc(int size) {
+void *zmalloc(int size) {    
     return malloc(size);
 }
 #endif

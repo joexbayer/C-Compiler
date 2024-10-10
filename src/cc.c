@@ -12,6 +12,10 @@
  * Rewritten and modified for RetrOS-32 by Joe Bayer
  */
 
+#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
+#pragma GCC diagnostic ignored "-Wstrict-prototypes"
+
 #include <ast.h>
 #include <cc.h>
 #include <func.h>
@@ -168,7 +172,7 @@ static void include(char *file) {
             return;
         } else {
             printf("Failed to read from file");
-            cc_close(fd);  // Ensure file descriptor is closed on error
+            cc_close(fd);
             free(include_buffer);
             exit(EXIT_FAILURE);
         }
@@ -473,8 +477,6 @@ static struct ast_node *expression(int level) {
                 node = zmalloc(sizeof(struct ast_node));
                 node->type = AST_FUNCALL;
                 node->ident = *id;
-                node->left = NULL;
-                node->right = NULL;
 
                 next();
                 if(token != ')'){
@@ -1180,7 +1182,6 @@ struct ast_node* parse() {
     struct member *m;
     struct identifier* func;
     struct identifier* current_struct;
-
 
     while(token) {
         bt = INT;
