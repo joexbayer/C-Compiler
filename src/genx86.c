@@ -201,7 +201,7 @@ void generate_x86(struct ast_node *node, void* *file) {
 
             switch (node->value) {
                 case Add: {
-                    asmprintf(file, "addl HERE%%ebx, %%eax\n");
+                    asmprintf(file, "addl %%ebx, %%eax\n");
                     opcodes[opcodes_count++] = 0x01;
                     opcodes[opcodes_count++] = 0xd8;
                     }break;

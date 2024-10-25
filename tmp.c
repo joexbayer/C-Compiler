@@ -1,16 +1,19 @@
 struct object {
-    int type;
     int value;
 
-    int get() {
-        return 69;
+    int get(struct object *object, int value) {
+        object->value = value;
+        return object->value;
     };
+
+    int type;
 };
 
-int get(struct object *obj){
-    return obj->value;
-}
-
 int main(){
-    return object_get();
+    struct object obj;
+    obj.value = 10;
+
+    obj.get(64);
+
+    return obj.type;
 }

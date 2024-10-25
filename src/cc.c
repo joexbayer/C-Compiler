@@ -938,6 +938,42 @@ static struct ast_node *expression(int level) {
                 node->data_type = m->type;
 
                 next();
+
+                if (token == '(') {
+                    struct ast_node *func_call_node = zmalloc(sizeof(struct ast_node));
+                    func_call_node->type = AST_FUNCALL;
+                    func_call_node->ident = *node->member->ident;
+
+                    next();
+
+                    if (token != ')') {
+                        struct ast_node *arg = expression(Assign);
+                        func_call_node->left = arg;
+
+                        while (token == ',') {
+                            next();
+                            struct ast_node *next_arg = expression(Assign);
+                            arg->next = next_arg;
+                            arg = next_arg;
+                        }
+
+                        // Add the address of the struct as the last parameter implicitly
+                        struct ast_node *struct_param = zmalloc(sizeof(struct ast_node));
+                        struct_param->type = AST_ADDR;
+                        struct_param->left = node->left;
+                        struct_param->data_type = node->left->data_type + PTR;
+                        arg->next = struct_param;
+                    } else {
+                        // Add the address of the struct as the only parameter implicitly
+                        struct ast_node *struct_param = zmalloc(sizeof(struct ast_node));
+                        struct_param->type = AST_ADDR;
+                        struct_param->left = node->left;
+                        struct_param->data_type = node->left->data_type + PTR;
+                        func_call_node->left = struct_param;
+                    }
+                    next();
+                    node = func_call_node;
+                }
                 break;
 
             case BrakOpen:
@@ -1132,7 +1168,7 @@ static struct ast_node *statement() {
                 node->left = NULL;
             }
             if(token != ';'){
-                printf("%d: semicolon expected\n", line);
+                printf("%d: semicolon expected, found %c\n", line, token);
                 exit(-1);
             }
             next();
@@ -1279,8 +1315,46 @@ struct ast_node* parse() {
                             
                             func = last_identifier;
 
+                            /* Parse function arguments */
+                            int i2 = 0;
                             next();
-                            if(token != ')'){
+                            while (token != ')') {
+                                ty = INT;
+                                if (token == Int) next();
+                                else if (token == Char) {
+                                    next();
+                                    ty = CHAR;
+                                } else if (token == Struct) {
+                                    next();
+                                    if (token != Id) {
+                                        printf("%d: bad struct type\n", line);
+                                        exit(-1);
+                                    }
+                                    ty = last_identifier->stype;
+                                    next();
+                                }
+
+                                while (token == Mul) {
+                                    next();
+                                    ty = ty + PTR;
+                                }
+
+                                if (token != Id) {
+                                    printf("%d: bad function parameter\n", line);
+                                    exit(-1);
+                                }
+
+                                last_identifier->hclass = last_identifier->class;
+                                last_identifier->htype = last_identifier->type;
+                                last_identifier->hval = last_identifier->val;
+                                last_identifier->class = Loc;
+                                last_identifier->type = ty;
+                                last_identifier->val = i2++;                        
+
+                                next();
+                                if (token == ',') next();
+                            }
+                            if (token != ')') {
                                 printf("%d: bad function definition\n", line);
                                 exit(-1);
                             }
@@ -1290,6 +1364,8 @@ struct ast_node* parse() {
                                 exit(-1);
                             }
                             next();
+
+                            local_offset = ++i2;
                             
                             struct ast_node *enter_node = zmalloc(sizeof(struct ast_node));
                             enter_node->type = AST_ENTER;
@@ -1318,8 +1394,6 @@ struct ast_node* parse() {
                             }
 
                             next();
-                            
-
                             continue;
                         }
 
@@ -1663,7 +1737,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
 
     dbgprintf("CC: Done parsing\n");
 
-    if(config.ast) {
+    if(config.ast || 1) {
         print_ast(ast_root);
     }
     
@@ -1716,7 +1790,7 @@ void print_ast_node(struct ast_node *node, int indent_level) {
             printf("String: %d\n", node->value);
             break;
         case AST_IDENT:
-            printf("Identifier: %.*s \n", node->ident.name_length, node->ident.name);
+            printf("Identifier: %.*s %d \n", node->ident.name_length, node->ident.name, node->ident.val);
             break;
         case AST_BINOP:
             printf("Binop: %d\n", node->value);
