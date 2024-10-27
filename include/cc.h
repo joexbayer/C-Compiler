@@ -76,6 +76,7 @@ struct identifier {
     int hval;
     int array; /* Array size */
     int array_type; /* Type of array */
+    int args;
 };
 
 #define MAX_MEMBERS 128

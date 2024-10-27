@@ -19,6 +19,10 @@ enum {
     O_APPEND = 1024,
 };
 
+int joe() {
+    return 0;
+}
+
 // Function to read from a file descriptor using read system call *
 int alloc(int size) { 
     int ptr;

@@ -45,6 +45,7 @@ demo: $(OUTPUT)
 tests: $(OUTPUT)
 	@for file in $(TESTS); do \
 		echo "[TEST $$file]"; \
-		./$(OUTPUT) --elf $$file; \
+		rm -f a.out; \
+		./$(OUTPUT) $$file; \
 		./a.out; \
 	done

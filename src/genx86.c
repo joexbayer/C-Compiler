@@ -1045,8 +1045,8 @@ void write_opcodes(){
 #endif
     );
     
-    if (fd == -1) { 
-        printf("Failed to open output file\n");
+    if (fd < 0) { 
+        printf("Failed to open output file: %d\n", fd);
         return;
     }
 
@@ -1058,9 +1058,15 @@ void write_opcodes(){
     memcpy(buffer + pos, opcodes, opcodes_count);
     pos += opcodes_count;
 
+#ifdef NATIVE
+    chmod(config.output, 0755);
+#endif
+
     cc_write(fd, buffer, pos);
     cc_close(fd);
     free(buffer);
+
+    printf("Successfully compiled to %s\n", config.output);
 
     return;
 }
