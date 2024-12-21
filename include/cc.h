@@ -29,7 +29,7 @@ void *zmalloc(int size);
 
 enum TOKENS {
   Num = 128, Fun, Sys, Glo, Loc, Id,
-  Break, Case, Char, Default, Else, Enum, If, Int, Return, Sizeof, Struct, Switch, While,
+  Break, Case, Char, Default, Else, Enum, If, Int, Return, Sizeof, Struct, Switch, While, Asm,
   Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Dot, Arrow, BrakOpen, BrakClose
 };
 
@@ -77,6 +77,7 @@ struct identifier {
     int array; /* Array size */
     int array_type; /* Type of array */
     int args;
+    unsigned int address;
 };
 
 #define MAX_MEMBERS 128
@@ -95,5 +96,7 @@ extern char *org_data;
 
 int dbgprintf(const char *fmt, ...);
 int write_elf_header(char* buffer, int entry, int text_size, int data_size);
+
+//int compile_asm(char* asm, uint8_t* opcodes, int* opcodes_count);
 
 #endif /* DF579CF4_EFA3_4966_AEE7_98CCF666A06B */

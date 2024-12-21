@@ -19,10 +19,6 @@ enum {
     O_APPEND = 1024,
 };
 
-int joe() {
-    return 0;
-}
-
 // Function to read from a file descriptor using read system call *
 int alloc(int size) { 
     int ptr;
@@ -71,9 +67,9 @@ int scanline(char* buf, int count) {
 
 // Function to open a file using open system call *
 int open(char* filename, int flags, int mode) {
-    int fd;
-    fd = __interrupt(0x80, SYS_OPEN, filename, flags, mode, 0);
-    return fd;
+    int fd2;
+    fd2 = __interrupt(0x80, SYS_OPEN, filename, flags, mode, 0);
+    return fd2;
 }
 
 // Function to close a file descriptor using close system call *

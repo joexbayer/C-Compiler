@@ -28,7 +28,8 @@ enum ast_nodeType {
     AST_ADDR,
     AST_ENTER,
     AST_LEAVE,
-    AST_ADJ
+    AST_ADJ,
+    AST_ASM
 };
 
 /* AST Node */
@@ -41,6 +42,7 @@ struct ast_node {
     struct ast_node *next;
     struct identifier ident;
     struct member *member;
+    char* asm_code;
 };
 
 #endif // !__AST_H

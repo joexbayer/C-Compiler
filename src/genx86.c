@@ -1017,6 +1017,14 @@ void generate_x86(struct ast_node *node, void* *file) {
             GEN_X86_POP_EBP();
             GEN_X86_RET();
             break;
+        case AST_ASM:
+            printf("ASM: %.*s\n", node->ident.name_length, node->ident.name);
+            printf("ASM: %s\n", node->asm_code);
+            node->ident.address = opcodes_count;
+
+            /* Parse GAS Intel x86 assembly */
+
+            break;
         default:
             printf("Unknown AST node type: %d\n", node->type);
             exit(-1);

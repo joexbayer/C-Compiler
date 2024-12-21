@@ -40,8 +40,8 @@ int cleanup();
 
 static char *current_position;
 static char *last_position;
-static char *keywords = "break case char default else enum if int return sizeof struct switch while "
-                       "__interrupt __inportb __outportb __inportw __outportw __inportl __outport __unused void main";
+static char *keywords = "break case char default else enum if int return sizeof struct switch while asm "
+                        "__interrupt __inportb __outportb __inportw __outportw __inportl __outport __unused void main";
 
 char *data;
 char *org_data;
@@ -393,6 +393,21 @@ static void next() {
     }
 }
 
+/* Parse prototypes */
+static struct ast_node *create_ast_node(int type, int value, int data_type);
+static struct ast_node *parse_sizeof();
+static struct ast_node *parse_identifier();
+static struct ast_node *parse_parenthesis();
+static int parse_cast();
+static struct ast_node *parse_dereference();
+static struct ast_node *parse_address();
+static struct ast_node *parse_unary_op(int op);
+static struct ast_node *parse_inc_dec();
+static struct ast_node *parse_binary_op(struct ast_node *left, int level);
+static struct ast_node *parse_member_access(struct ast_node *left);
+static struct ast_node *parse_member_func_call(struct ast_node *node);
+static struct ast_node *parse_array_access(struct ast_node *left);
+
 /**
  * @brief Parse an expression and construct an AST node
  * A expression is a sequence of terms separated by + or - operators
@@ -411,235 +426,48 @@ static struct ast_node *expression(int level) {
             printf("%d: unexpected token EOF of expression\n", line);
             exit(-1);
         case Num:
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_NUM;
-            node->value = ival;
-            node->data_type = INT;
+            node = create_ast_node(AST_NUM, ival, INT);
             next();
             break;
         case '"':
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_STR;
-            node->value = ival;
+            node = create_ast_node(AST_STR, ival, PTR);
             next();
             while (token == '"') {
                 next();
             }
-            /* The reason for long is that with int it fails on 64bit */
             data = (char *)(((long)data + sizeof(int)) & -sizeof(int));
-            node->data_type = PTR;
             break;
         case Sizeof:
-            next();
-            if(token == '('){
-                next();
-            }else {
-                printf("%d: open parenthesis expected in sizeof\n", line);
-                exit(-1);
-            }
-
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_NUM;
-            node->data_type = INT;
-            node->value = 0;
-
-            if(token == Int){
-                node->value = sizeof(int);
-                next();
-            } else if(token == Char){
-                node->value = sizeof(char);
-                next();
-            } else if (token == Struct){
-                next();
-                if(token != Id){
-                    printf("%d: bad struct type\n", line);
-                    exit(-1);
-                }
-                t = last_identifier->stype;
-                node->value = type_size[t];
-                next();
-            } 
-
-            while(token == Mul){
-                next();
-                node->value *= sizeof(int);
-            }
-
-            if(token == ')'){
-                next();
-            } else {
-                printf("%d: close parenthesis expected in sizeof\n", line);
-                exit(-1);
-            }
+            node = parse_sizeof();
             break;
         case Id:
-            id = last_identifier;
-            next();
-
-            if(token == '('){
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_FUNCALL;
-                node->ident = *id;
-                    
-                next();
-                if(token != ')'){
-                    node->left = expression(Assign);
-                    while(token == ','){
-                        next();
-                        struct ast_node *arg = expression(Assign);
-                        arg->next = node->left;
-                        node->left = arg;
-                    }
-                }
-                next();
-                break;
-
-            } else if(id->class == Num){
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_NUM;
-                node->value = id->val;
-                node->data_type = id->type;
-                type = id->type;
-            } else {
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_IDENT;
-                node->ident = *id;
-                node->data_type = id->type;
-
-                if(id->class == Loc){
-                    node->value = local_offset - id->val;
-                } else if(id->class == Glo){
-                    node->value = id->val;
-                } else if(id->class == Fun){
-                    node->value = id->val;
-                } else {
-                    printf("%d: undefined variable: class %d\n", line, id->class);
-                    exit(-1);
-                }
-            }
-
-          
+            node = parse_identifier();
             break;
         case '(':
-            next();
-            if(token == Int || token == Char || token == Struct){
-                /* Cast */
-                if(token == Int){
-                    next();
-                    t = INT;
-                } else if(token == Char){
-                    next();
-                    t = CHAR;
-                } else {
-                    next();
-                    if (token != Id){
-                        printf("%d: bad struct type: %d\n", line, token);
-                        exit(-1);
-                    }
-                    t = last_identifier->stype;
-                    next();
-                }
-
-                /* Check for pointers */
-                while(token == Mul){
-                    next();
-                    t += PTR;
-                }
-
-                /* Check for the end of the cast */
-                if(token == ')'){
-                    next();
-                } else {
-                    printf("%d: bad cast: %c (%d)\n", line, token, token);
-                    exit(-1);
-                }
-                
-                /* Parse the expression */
-                node = expression(Inc);
-                node->data_type = t;
-            } else {
-                node = expression(Assign);
-                if(token == ')'){
-                    next();
-                } else {
-                    printf("%d: bad expression\n", line);
-                    exit(-1);
-                }
-            }
+            node = parse_parenthesis();
             break;
-        
         case Mul:
-            next();
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_DEREF;
-            node->left = expression(Inc);
-            if(node->left->data_type <= INT){
-                printf("%d: bad dereference\n", line);
-                exit(-1);
-            }
-            node->data_type = node->left->data_type - PTR;
-            break; 
+            node = parse_dereference();
+            break;
         case And:
-            next();
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_ADDR;
-            node->left = expression(Inc);
-            node->data_type = node->left->data_type + PTR;
+            node = parse_address();
             break;
-        
         case '!':
-            next();
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_UNOP;
-            node->left = expression(Inc);
-            node->data_type = INT;
-            node->value = Ne;
+            node = parse_unary_op(Ne);
             break;
-
         case '~':
-            next();
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_UNOP;
-            node->left = expression(Inc);
-            node->data_type = INT;
-            node->value = Xor;
+            node = parse_unary_op(Xor);
             break;
-
         case Add:
             next();
             node = expression(Inc);
             break;
-        
         case Sub:
-            next();
-            node = zmalloc(sizeof(struct ast_node));
-            node->type = AST_UNOP;
-            node->left = expression(Inc);
-            node->data_type = INT;
-            node->value = Sub;
+            node = parse_unary_op(Sub);
             break;
-
         case Inc:
         case Dec:
-            t = token;
-            next();
-            node = expression(Inc);
-
-            struct ast_node *op_node = zmalloc(sizeof(struct ast_node));
-            op_node->type = AST_BINOP;
-            op_node->left = node;
-            op_node->right = zmalloc(sizeof(struct ast_node));
-            op_node->right->type = AST_NUM;
-            op_node->right->value = (node->data_type >= PTR2 ? sizeof(int) : (node->data_type >= PTR) ? type_size[node->data_type - PTR] : 1);
-            op_node->right->data_type = INT;
-            op_node->value = (t == Inc) ? Add : Sub;
-
-            struct ast_node *assign_node = zmalloc(sizeof(struct ast_node));
-            assign_node->type = AST_ASSIGN;
-            assign_node->left = node;
-            assign_node->right = op_node;
-            assign_node->data_type = node->data_type;
-            node = assign_node;
+            node = parse_inc_dec();
             break;
         default:
             printf("%d: bad expression\n", line);
@@ -652,388 +480,474 @@ static struct ast_node *expression(int level) {
 
     while(token >= level){
         left = node;
-
-        switch(token){
-            case Assign:
-                next();
-                right = expression(Assign);
-
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_ASSIGN;
-                node->left = left;
-                node->right = right;
-                node->data_type = left->data_type;
-                break;
-            case Cond:
-                next();
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->value = Cond;
-                node->right = zmalloc(sizeof(struct ast_node));
-                node->right->left = expression(Assign);
-                if(token == ':'){
-                    next();
-                    node->right->right = expression(Cond);
-                } else {
-                    printf("%d: missing colon in conditional\n", line);
-                    exit(-1);
-                }
-                break;
-            case Lor:
-                next();
-                right = expression(Lan);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Lor;
-                node->data_type = INT;
-                break;
-            case Lan:
-                next();
-                right = expression(Or);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Lan;
-                node->data_type = INT;
-                break;
-            
-            case Or:
-                next();
-                right = expression(Xor);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Or;
-                node->data_type = INT;
-                break;
-
-            case Xor:
-                next();
-                right = expression(And);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Xor;
-                node->data_type = INT;
-                break;
-
-            case And:
-                next();
-                right = expression(Eq);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = And;
-                node->data_type = INT;
-                break;
-            
-            case Eq:
-                next();
-                right = expression(Lt);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Eq;
-                node->data_type = INT;
-                break;
-            
-            case Ne:
-                next();
-                right = expression(Lt);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Ne;
-                node->data_type = INT;
-                break;
-            
-            case Lt:
-                next();
-                right = expression(Shl);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Lt;
-                node->data_type = INT;
-                break;
-            
-            case Gt:
-                next();
-                right = expression(Shl);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Gt;
-                node->data_type = INT;
-                break;
-            
-            case Le:
-                next();
-                right = expression(Shl);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Le;
-                node->data_type = INT;
-                break;
-            
-            case Ge:
-                next();
-                right = expression(Shl);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Ge;
-                node->data_type = INT;
-                break;
-            
-            case Shl:
-                next();
-                right = expression(Add);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Shl;
-                node->data_type = INT;
-                break;
-            
-            case Shr:
-                next();
-                right = expression(Add);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Shr;
-                node->data_type = INT;
-                break;
-            
-            case Add:
-                next();
-                right = expression(Mul);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Add;
-                node->data_type = left->data_type;
-                break;
-            
-            case Sub:
-                next();
-                right = expression(Mul);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Sub;
-                node->data_type = left->data_type;
-                break; 
-            case Mul:
-                next();
-                right = expression(Inc);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Mul;
-                node->data_type = INT;
-                break;
-
-            case Div:
-                next();
-                right = expression(Inc);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Div;
-                node->data_type = INT;
-                break;
-            
-            case Mod:
-                next();
-                right = expression(Inc);
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Mod;
-                node->data_type = INT;
-                break;
-            
-            case Inc:
-            case Dec:
-                t = token;
-                next();
-
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = zmalloc(sizeof(struct ast_node));
-                node->right->type = AST_NUM;
-                node->right->value = (left->data_type >= PTR2 ? sizeof(int) : (left->data_type >= PTR) ? type_size[left->data_type - PTR] : 1);
-                node->right->data_type = INT;
-                node->value = (t == Inc) ? Add : Sub;
-                node->data_type = left->data_type;
-
-                struct ast_node *assign_node = zmalloc(sizeof(struct ast_node));
-                assign_node->type = AST_ASSIGN;
-                assign_node->left = left;
-                assign_node->right = node;
-                assign_node->data_type = left->data_type;
-                node = assign_node;
-                break;
-
-            case Dot:
-                left->data_type += PTR;
-                /* fall through to Arrow case */
-            case Arrow:
-                if (left->data_type <= PTR + INT || left->data_type >= PTR2) {
-                    printf("%d: illegal use of ->\n", line);
-                    exit(-1);
-                }
-                next();
-                if (token != Id) {
-                    printf("%d: illegal use of ->\n", line);
-                    exit(-1);
-                }
-                m = members[left->data_type - PTR];
-                while (m && m->ident != last_identifier) {
-                    m = m->next;
-                }
-                if (!m) {
-                    printf("%d: struct member not found: %.*s\n", line, last_identifier->name_length, last_identifier->name);
-                    exit(-1);
-                }
-
-                struct ast_node *binop_node = zmalloc(sizeof(struct ast_node));
-                binop_node->type = AST_BINOP;
-                binop_node->left = left; /* Left is the identifier */
-
-                binop_node->right = zmalloc(sizeof(struct ast_node));
-                binop_node->right->type = AST_NUM;
-                binop_node->right->value = m->offset;
-                binop_node->right->data_type = INT;
-
-                binop_node->value = Add;
-                binop_node->data_type = left->data_type;
-
-                node = binop_node;
-                
-                /* Set these properties regardless of the offset condition */
-                node->type = AST_MEMBER_ACCESS;
-                node->member = m;
-                node->data_type = m->type;
-
-                next();
-
-                if (token == '(') {
-                    struct ast_node *func_call_node = zmalloc(sizeof(struct ast_node));
-                    func_call_node->type = AST_FUNCALL;
-                    func_call_node->ident = *node->member->ident;
-
-                    next();
-
-                    if (token != ')') {
-                        struct ast_node *arg = expression(Assign);
-                        func_call_node->left = arg;
-
-                        while (token == ',') {
-                            next();
-                            struct ast_node *next_arg = expression(Assign);
-                            arg->next = next_arg;
-                            arg = next_arg;
-                        }
-
-                        // Add the address of the struct as the last parameter implicitly
-                        struct ast_node *struct_param = zmalloc(sizeof(struct ast_node));
-                        struct_param->type = AST_ADDR;
-                        struct_param->left = node->left;
-                        struct_param->data_type = node->left->data_type + PTR;
-                        arg->next = struct_param;
-                    } else {
-                        // Add the address of the struct as the only parameter implicitly
-                        struct ast_node *struct_param = zmalloc(sizeof(struct ast_node));
-                        struct_param->type = AST_ADDR;
-                        struct_param->left = node->left;
-                        struct_param->data_type = node->left->data_type + PTR;
-                        func_call_node->left = struct_param;
-                    }
-                    next();
-                    node = func_call_node;
-                }
-                break;
-
-            case BrakOpen:
-                next();
-                right = expression(Assign);
-                
-                if (token == BrakClose) {
-                    next();
-                } else {
-                    printf("%d: close bracket expected: (%c) %d\n", line, token, token);
-                    exit(-1);
-                }
-
-                if (left->data_type < PTR) {
-                    printf("%d: pointer type expected\n", line);
-                    exit(-1);
-                }
-
-                sz = (left->data_type - PTR) >= PTR2 ? sizeof(int) : type_size[left->data_type - PTR];
-                if (sz > 1) {
-                    node = zmalloc(sizeof(struct ast_node));
-                    node->type = AST_BINOP;
-                    node->left = right;
-                    node->right = zmalloc(sizeof(struct ast_node));
-                    node->right->type = AST_NUM;
-                    node->right->value = sz;
-                    node->right->data_type = INT;
-                    node->value = Mul;
-                    node->data_type = right->data_type;
-                    right = node;
-                }
-                node = zmalloc(sizeof(struct ast_node));
-                node->type = AST_BINOP;
-                node->left = left;
-                node->right = right;
-                node->value = Add;
-                node->data_type = left->data_type;
-                left = node;  /* The left node is now the address calculation result */
-
-                /* Create a dereference node */
-                node = zmalloc(sizeof(struct ast_node));
-                if(left->left->ident.array == 0){
-                    node->type = AST_DEREF;
-                } else {
-                    node->type = AST_ADDR;
-                }
-                node->left = left;
-                node->data_type = left->data_type - PTR;
-                break;
-            case BrakClose:
-                return node;
-            default:
-                printf("%d: compiler error, token = %d\n", line, token);
-                exit(-1);
-        }
+        node = parse_binary_op(left, level);
     }
 
+    return node;
+}
+
+static struct ast_node *create_ast_node(int type, int value, int data_type) {
+    struct ast_node *node = zmalloc(sizeof(struct ast_node));
+    node->type = type;
+    node->value = value;
+    node->data_type = data_type;
+    return node;
+}
+
+static struct ast_node *parse_sizeof() {
+    struct ast_node *node = create_ast_node(AST_NUM, 0, INT);
+    next();
+    if(token == '('){
+        next();
+    } else {
+        printf("%d: open parenthesis expected in sizeof\n", line);
+        exit(-1);
+    }
+
+    if(token == Int){
+        node->value = sizeof(int);
+        next();
+    } else if(token == Char){
+        node->value = sizeof(char);
+        next();
+    } else if (token == Struct){
+        next();
+        if(token != Id){
+            printf("%d: bad struct type\n", line);
+            exit(-1);
+        }
+        int t = last_identifier->stype;
+        node->value = type_size[t];
+        next();
+    } 
+
+    while(token == Mul){
+        next();
+        node->value *= sizeof(int);
+    }
+
+    if(token == ')'){
+        next();
+    } else {
+        printf("%d: close parenthesis expected in sizeof\n", line);
+        exit(-1);
+    }
+    return node;
+}
+
+static struct ast_node *parse_identifier() {
+    struct ast_node *node;
+    struct identifier *id = last_identifier;
+    next();
+
+    if(token == '('){
+        node = create_ast_node(AST_FUNCALL, 0, 0);
+        node->ident = *id;
+        next();
+        if(token != ')'){
+            node->left = expression(Assign);
+            while(token == ','){
+                next();
+                struct ast_node *arg = expression(Assign);
+                arg->next = node->left;
+                node->left = arg;
+            }
+        }
+        next();
+    } else if(id->class == Num){
+        node = create_ast_node(AST_NUM, id->val, id->type);
+        type = id->type;
+    } else {
+        node = create_ast_node(AST_IDENT, 0, id->type);
+        node->ident = *id;
+        if(id->class == Loc){
+            node->value = local_offset - id->val;
+        } else if(id->class == Glo){
+            node->value = id->val;
+        } else if(id->class == Fun){
+            node->value = id->val;
+        } else {
+            printf("%d: undefined variable: class %d\n", line, id->class);
+            exit(-1);
+        }
+    }
+    return node;
+}
+
+static struct ast_node *parse_parenthesis() {
+    struct ast_node *node;
+    next();
+    if(token == Int || token == Char || token == Struct){
+        int t = parse_cast();
+        node = expression(Inc);
+        node->data_type = t;
+    } else {
+        node = expression(Assign);
+        if(token == ')'){
+            next();
+        } else {
+            printf("%d: bad expression\n", line);
+            exit(-1);
+        }
+    }
+    return node;
+}
+
+static int parse_cast() {
+    int t;
+    if(token == Int){
+        next();
+        t = INT;
+    } else if(token == Char){
+        next();
+        t = CHAR;
+    } else {
+        next();
+        if (token != Id){
+            printf("%d: bad struct type: %d\n", line, token);
+            exit(-1);
+        }
+        t = last_identifier->stype;
+        next();
+    }
+
+    while(token == Mul){
+        next();
+        t += PTR;
+    }
+
+    if(token == ')'){
+        next();
+    } else {
+        printf("%d: bad cast: %c (%d)\n", line, token, token);
+        exit(-1);
+    }
+    return t;
+}
+
+static struct ast_node *parse_dereference() {
+    struct ast_node *node = create_ast_node(AST_DEREF, 0, 0);
+    next();
+    node->left = expression(Inc);
+    if(node->left->data_type <= INT){
+        printf("%d: bad dereference\n", line);
+        exit(-1);
+    }
+    node->data_type = node->left->data_type - PTR;
+    return node;
+}
+
+static struct ast_node *parse_address() {
+    struct ast_node *node = create_ast_node(AST_ADDR, 0, 0);
+    next();
+    node->left = expression(Inc);
+    node->data_type = node->left->data_type + PTR;
+    return node;
+}
+
+static struct ast_node *parse_unary_op(int op) {
+    struct ast_node *node = create_ast_node(AST_UNOP, op, INT);
+    next();
+    node->left = expression(Inc);
+    return node;
+}
+
+static struct ast_node *parse_inc_dec() {
+    int t = token;
+    next();
+    struct ast_node *node = expression(Inc);
+
+    struct ast_node *op_node = create_ast_node(AST_BINOP, (t == Inc) ? Add : Sub, node->data_type);
+    op_node->left = node;
+    op_node->right = create_ast_node(AST_NUM, (node->data_type >= PTR2 ? sizeof(int) : (node->data_type >= PTR) ? type_size[node->data_type - PTR] : 1), INT);
+
+    struct ast_node *assign_node = create_ast_node(AST_ASSIGN, 0, node->data_type);
+    assign_node->left = node;
+    assign_node->right = op_node;
+    return assign_node;
+}
+
+static struct ast_node *parse_binary_op(struct ast_node *left, int level) {
+    struct ast_node *node = NULL, *right = NULL;
+    int t;
+    struct member *m;
+    int sz;
+
+    switch(token){
+        case Assign:
+            next();
+            right = expression(Assign);
+            node = create_ast_node(AST_ASSIGN, 0, left->data_type);
+            node->left = left;
+            node->right = right;
+            break;
+        case Cond:
+            next();
+            node = create_ast_node(AST_BINOP, Cond, 0);
+            node->left = left;
+            node->right = create_ast_node(0, 0, 0);
+            node->right->left = expression(Assign);
+            if(token == ':'){
+                next();
+                node->right->right = expression(Cond);
+            } else {
+                printf("%d: missing colon in conditional\n", line);
+                exit(-1);
+            }
+            break;
+        case Lor:
+            next();
+            right = expression(Lan);
+            node = create_ast_node(AST_BINOP, Lor, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Lan:
+            next();
+            right = expression(Or);
+            node = create_ast_node(AST_BINOP, Lan, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Or:
+            next();
+            right = expression(Xor);
+            node = create_ast_node(AST_BINOP, Or, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Xor:
+            next();
+            right = expression(And);
+            node = create_ast_node(AST_BINOP, Xor, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case And:
+            next();
+            right = expression(Eq);
+            node = create_ast_node(AST_BINOP, And, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Eq:
+            next();
+            right = expression(Lt);
+            node = create_ast_node(AST_BINOP, Eq, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Ne:
+            next();
+            right = expression(Lt);
+            node = create_ast_node(AST_BINOP, Ne, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Lt:
+            next();
+            right = expression(Shl);
+            node = create_ast_node(AST_BINOP, Lt, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Gt:
+            next();
+            right = expression(Shl);
+            node = create_ast_node(AST_BINOP, Gt, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Le:
+            next();
+            right = expression(Shl);
+            node = create_ast_node(AST_BINOP, Le, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Ge:
+            next();
+            right = expression(Shl);
+            node = create_ast_node(AST_BINOP, Ge, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Shl:
+            next();
+            right = expression(Add);
+            node = create_ast_node(AST_BINOP, Shl, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Shr:
+            next();
+            right = expression(Add);
+            node = create_ast_node(AST_BINOP, Shr, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Add:
+            next();
+            right = expression(Mul);
+            node = create_ast_node(AST_BINOP, Add, left->data_type);
+            node->left = left;
+            node->right = right;
+            break;
+        case Sub:
+            next();
+            right = expression(Mul);
+            node = create_ast_node(AST_BINOP, Sub, left->data_type);
+            node->left = left;
+            node->right = right;
+            break;
+        case Mul:
+            next();
+            right = expression(Inc);
+            node = create_ast_node(AST_BINOP, Mul, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Div:
+            next();
+            right = expression(Inc);
+            node = create_ast_node(AST_BINOP, Div, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Mod:
+            next();
+            right = expression(Inc);
+            node = create_ast_node(AST_BINOP, Mod, INT);
+            node->left = left;
+            node->right = right;
+            break;
+        case Inc:
+        case Dec:
+            t = token;
+            next();
+            node = create_ast_node(AST_BINOP, (t == Inc) ? Add : Sub, left->data_type);
+            node->left = left;
+            node->right = create_ast_node(AST_NUM, (left->data_type >= PTR2 ? sizeof(int) : (left->data_type >= PTR) ? type_size[left->data_type - PTR] : 1), INT);
+
+            struct ast_node *assign_node = create_ast_node(AST_ASSIGN, 0, left->data_type);
+            assign_node->left = left;
+            assign_node->right = node;
+            node = assign_node;
+            break;
+        case Dot:
+            left->data_type += PTR;
+        case Arrow:
+            node = parse_member_access(left);
+            break;
+        case BrakOpen:
+            node = parse_array_access(left);
+            break;
+        default:
+            printf("%d: compiler error, token = %d\n", line, token);
+            exit(-1);
+    }
+    return node;
+}
+
+static struct ast_node *parse_member_access(struct ast_node *left) {
+    struct ast_node *node;
+    struct member *m;
+    if (left->data_type <= PTR + INT || left->data_type >= PTR2) {
+        printf("%d: illegal use of ->\n", line);
+        exit(-1);
+    }
+    next();
+    if (token != Id) {
+        printf("%d: illegal use of ->\n", line);
+        exit(-1);
+    }
+    m = members[left->data_type - PTR];
+    while (m && m->ident != last_identifier) {
+        m = m->next;
+    }
+    if (!m) {
+        printf("%d: struct member not found: %.*s\n", line, last_identifier->name_length, last_identifier->name);
+        exit(-1);
+    }
+
+    struct ast_node *binop_node = create_ast_node(AST_BINOP, Add, left->data_type);
+    binop_node->left = left;
+    binop_node->right = create_ast_node(AST_NUM, m->offset, INT);
+
+    node = binop_node;
+    node->type = AST_MEMBER_ACCESS;
+    node->member = m;
+    node->data_type = m->type;
+
+    next();
+
+    if (token == '(') {
+        node = parse_member_func_call(node);
+    }
+    return node;
+}
+
+static struct ast_node *parse_member_func_call(struct ast_node *node) {
+    struct ast_node *func_call_node = create_ast_node(AST_FUNCALL, 0, 0);
+    func_call_node->ident = *node->member->ident;
+
+    next();
+
+    if (token != ')') {
+        struct ast_node *arg = expression(Assign);
+        func_call_node->left = arg;
+
+        while (token == ',') {
+            next();
+            struct ast_node *next_arg = expression(Assign);
+            arg->next = next_arg;
+            arg = next_arg;
+        }
+
+        struct ast_node *struct_param = create_ast_node(AST_ADDR, 0, node->left->data_type + PTR);
+        struct_param->left = node->left;
+        arg->next = struct_param;
+    } else {
+        struct ast_node *struct_param = create_ast_node(AST_ADDR, 0, node->left->data_type + PTR);
+        struct_param->left = node->left;
+        func_call_node->left = struct_param;
+    }
+    next();
+    return func_call_node;
+}
+
+static struct ast_node *parse_array_access(struct ast_node *left) {
+    struct ast_node *node, *right;
+    int sz;
+    next();
+    right = expression(Assign);
+
+    if (token == BrakClose) {
+        next();
+    } else {
+        printf("%d: close bracket expected: (%c) %d\n", line, token, token);
+        exit(-1);
+    }
+
+    if (left->data_type < PTR) {
+        printf("%d: pointer type expected\n", line);
+        exit(-1);
+    }
+
+    sz = (left->data_type - PTR) >= PTR2 ? sizeof(int) : type_size[left->data_type - PTR];
+    if (sz > 1) {
+        node = create_ast_node(AST_BINOP, Mul, right->data_type);
+        node->left = right;
+        node->right = create_ast_node(AST_NUM, sz, INT);
+        right = node;
+    }
+    node = create_ast_node(AST_BINOP, Add, left->data_type);
+    node->left = left;
+    node->right = right;
+    left = node;
+
+    node = create_ast_node(left->left->ident.array == 0 ? AST_DEREF : AST_ADDR, 0, left->data_type - PTR);
+    node->left = left;
     return node;
 }
 
@@ -1073,6 +987,44 @@ static struct ast_node *statement() {
 
             return node;
         
+        case Asm:
+            next(); // Move past `asm`
+
+            if (token != '{') {
+                printf("%d: Expected '{' after asm\n", line);
+                exit(-1);
+            }
+
+            char *asm_code_start = current_position;
+
+            // Collect assembly code until the closing brace
+            while (*current_position != '}' && *current_position != '\0') {
+                current_position++;
+            }
+
+            if (*current_position == '\0') {
+                printf("%d: Unexpected end of file in asm block\n", line);
+                exit(-1);
+            }
+
+            size_t asm_code_length = current_position - asm_code_start;
+            char *asm_code = (char *)malloc(asm_code_length + 1);
+            if (!asm_code) {
+                printf("Failed to allocate memory for asm code\n");
+                exit(-1);
+            }
+            strncpy(asm_code, asm_code_start, asm_code_length);
+            asm_code[asm_code_length] = '\0';
+
+            next(); // Consume the closing `}`
+
+            // Create an AST node for the inline `asm` block
+            node = zmalloc(sizeof(struct ast_node));
+            node->ident = (struct identifier){0};
+            node->type = AST_ASM;
+            node->asm_code = asm_code;
+
+            return node;
         case While:
             next();
             if(token != '('){
@@ -1507,6 +1459,64 @@ struct ast_node* parse() {
                 type_size[bt] = i;
             }
         }
+
+        if (token == Asm) {
+            next(); // Move past `asm`
+
+            if (token != Id) {
+                printf("%d: Expected identifier after 'asm'\n", line);
+                exit(-1);
+            }
+
+            struct identifier *id = last_identifier; // Store the name of the asm block
+            next(); // Move past the identifier
+
+            if (token != '{') {
+                printf("%d: Expected '{' after asm %.*s\n", id->name_length, id->name);
+                exit(-1);
+            }
+
+            char *asm_code_start = current_position;
+
+            // Collect assembly code until the closing brace
+            while (*current_position != '}' && *current_position != '\0') {
+                current_position++;
+            }
+
+            if (*current_position == '\0') {
+                printf("%d: Unexpected end of file in asm block\n", line);
+                exit(-1);
+            }
+
+            size_t asm_code_length = current_position - asm_code_start;
+            char *asm_code = (char *)malloc(asm_code_length + 1);
+            if (!asm_code) {
+                printf("Failed to allocate memory for asm code\n");
+                exit(-1);
+            }
+            strncpy(asm_code, asm_code_start, asm_code_length);
+            asm_code[asm_code_length] = '\0';
+
+            next(); // Consume the closing `}`
+
+            id->class = Glo; // Mark as a global symbol
+            id->type = AST_ASM; // Use a new AST type for `asm`
+            id->val = (int)asm_code; // Store the code pointer for later use
+
+            // Create an AST node for the `asm` block
+            struct ast_node *asm_node = (struct ast_node *)zmalloc(sizeof(struct ast_node));
+            asm_node->type = AST_ASM;
+            asm_node->ident = *id;
+            asm_node->asm_code = asm_code;
+
+            if (!root) {
+                root = asm_node;
+            } else {
+                current->next = asm_node;
+            }
+            current = asm_node;
+        }
+
         while(token != ';' && token != '}') {
             ty = bt;
             while(token == Mul) {
@@ -1778,7 +1788,7 @@ void compile_and_run(char* filename, int argc, char *argv[]){
 
     /* Read in symbols */
     int i = Break;
-    while (i <= While) {
+    while (i <= Asm) {
         next();
         last_identifier->tk = i++;
     }
@@ -1887,6 +1897,9 @@ void print_ast_node(struct ast_node *node, int indent_level) {
             break;
         case AST_FUNCDEF:
             printf("Function\n");
+            break;
+        case AST_ASM:
+            printf("Asm: %.*s\n", node->ident.name_length, node->ident.name);
             break;
         case AST_VARDECL:
             printf("Vardecl\n");
