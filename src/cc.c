@@ -561,7 +561,11 @@ static struct ast_node *parse_identifier() {
         node = create_ast_node(AST_IDENT, 0, id->type);
         node->ident = *id;
         if(id->class == Loc){
-            node->value = local_offset - id->val;
+            if(id->val > local_offset){
+                node->value = -id->val;
+            } else {
+                node->value = (local_offset+1) - id->val;
+            }
         } else if(id->class == Glo){
             node->value = id->val;
         } else if(id->class == Fun){
@@ -1179,6 +1183,11 @@ static void dump_identifier(struct identifier *id) {
     printf("Args: %d\n", id->args);
 }
 
+void parse_function_arguments(struct identifier *func);
+int parse_local_declarations();
+void parse_global_declarations(int bt);
+void parse_struct_members(int bt, struct identifier *current_struct);
+
 struct ast_node* parse() {
     int i;
     int bt;
@@ -1244,219 +1253,7 @@ struct ast_node* parse() {
                     exit(-1);
                 }
 
-                i = 0;
-
-                int func_bt = bt;
-                while(token != '}') {
-                    mbt = INT;
-                    if(token == Int) next();
-                    else if(token == Char) {
-                        next();
-                        mbt = CHAR;
-                    } else if(token == Struct) {
-                        next();
-                        if(token != Id) {
-                            printf("%d: bad struct member\n", line);
-                            exit(-1);
-                        }
-                        mbt = last_identifier->stype;
-                        next();
-                    }
-
-
-                    while(token != ';') {
-                        ty = mbt;
-                        while(token == Mul) {
-                            next();
-                            ty = ty + PTR;
-                        }
-
-                        if(token == '('){
-
-                            // char* name = zmalloc(64);
-                            // strncpy(name, current_struct->name, current_struct->name_length);
-                            // strncat(name, "_", 1);
-                            // strncat(name, last_identifier->name, last_identifier->name_length);
-                            // last_identifier->name = name;
-                            // last_identifier->name_length = strlen(name) + 1 + current_struct->name_length;
-
-                            last_identifier->class = Fun;
-                            last_identifier->val = function_id++;
-                            add_function(last_identifier->val, last_identifier->name, last_identifier->name_length, NULL);
-                            
-                            func = last_identifier;
-
-                            /* Parse function arguments */
-                            int i2 = 0;
-                            next();
-                            while (token != ')') {
-                                ty = INT;
-                                if (token == Int) next();
-                                else if (token == Char) {
-                                    next();
-                                    ty = CHAR;
-                                } else if (token == Struct) {
-                                    next();
-                                    if (token != Id) {
-                                        printf("%d: bad struct type\n", line);
-                                        exit(-1);
-                                    }
-                                    ty = last_identifier->stype;
-                                    next();
-                                }
-
-                                while (token == Mul) {
-                                    next();
-                                    ty = ty + PTR;
-                                }
-
-                                if (token != Id) {
-                                    printf("%d: bad function parameter\n", line);
-                                    exit(-1);
-                                }
-
-                                last_identifier->hclass = last_identifier->class;
-                                last_identifier->htype = last_identifier->type;
-                                last_identifier->hval = last_identifier->val;
-                                last_identifier->class = Loc;
-                                last_identifier->type = ty;
-                                last_identifier->val = i2++;                 
-
-                                next();
-                                if (token == ',') next();
-                            }
-                            if (token != ')') {
-                                printf("%d: bad function definition\n", line);
-                                exit(-1);
-                            }
-                            next();
-                            if(token != '{'){
-                                printf("%d: bad function definition\n", line);
-                                exit(-1);
-                            }
-                            next();
-
-                            func->args = i2;
-                            local_offset = ++i2;
-                            
-                            struct ast_node *enter_node = zmalloc(sizeof(struct ast_node));
-                            enter_node->type = AST_ENTER;
-                            enter_node->value = 0;
-                            enter_node->ident = *func;
-                            if (!root) {
-                                root = enter_node;
-                            } else {
-                                current->next = enter_node;
-                            }
-                            current = enter_node;
-
-                            while (token == Int || token == Char || token == Struct) {
-                                if (token == Int) bt = INT;
-                                else if (token == Char) bt = CHAR;
-                                else {
-                                    next();
-                                    if (token != Id) {
-                                        printf("%d: bad struct type\n", line);
-                                        exit(-1);
-                                    }
-                                    bt = last_identifier->stype;
-                                }
-                                next();
-                                while (token != ';') {
-                                    ty = bt;
-                                    while (token == Mul) {
-                                        next();
-                                        ty = ty + PTR;
-                                    }
-                                    if (token != Id) {
-                                        printf("%d: bad local declaration\n", line);
-                                        exit(-1);
-                                    }
-                                    last_identifier->type = ty;
-                                    next();
-                                    if (token == BrakOpen) {
-                                        next();
-                                        if (token != Num) {
-                                            printf("%d: expected number for array size\n", line);
-                                            exit(-1);
-                                        }
-                                        last_identifier->array = ival;
-                                        ty = ty + PTR;
-                                        next();
-                                        if (token != BrakClose) {
-                                            printf("%d: expected closing bracket for array declaration\n", line);
-                                            exit(-1);
-                                        }
-                                        next();
-                                    } else {
-                                        last_identifier->array = 0;
-                                    }
-                                    if (last_identifier->class == Loc) {
-                                        printf("%d: duplicate local definition\n", line);
-                                        exit(-1);
-                                    }
-                                    last_identifier->htype = last_identifier->type;
-                                    last_identifier->hclass = last_identifier->class;
-                                    last_identifier->hval = last_identifier->val;
-                                    last_identifier->class = Loc;
-                                    last_identifier->type = ty;
-                                    last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
-                                    i = last_identifier->val;
-                                    if (token == ',') next();
-                                }
-                                next();
-                            }
-
-                            while(token != '}') {
-                                struct ast_node *stmt = statement();
-                                current->next = stmt;
-                                current = stmt;
-                            }
-
-                            if(current->type != AST_RETURN) {
-                                struct ast_node *ret_node = zmalloc(sizeof(struct ast_node));
-                                ret_node->type = AST_LEAVE;
-                                ret_node->value = 0;
-
-                                current->next = ret_node;
-                                current = ret_node;
-                            }
-
-                            next();
-                            continue;
-                        }
-
-                        bt = func_bt;
-
-                        if(token != Id) {
-                            printf("%d: bad struct member %c (%d)\n", line, token, token);
-                            exit(-1);
-                        }
-
-                        m = (struct member*) zmalloc(sizeof(struct member));
-                        if(!m) {
-                            printf("Unable to malloc struct member\n");
-                            exit(-1);
-                        }
-
-                        m->ident = last_identifier;
-                        m->type = ty;
-                        m->offset = i;
-                        m->next = members[bt];
-                        members[bt] = m;
-
-                        //printf("Member for %d: %.*s, Type: %d, Offset: %d\n", bt, m->ident->name_length, m->ident->name, m->type, m->offset);
-
-                        i = i + (ty >= PTR ? sizeof(int) : type_size[ty]);
-                        i = (i + 3) & -4;
-                        
-                        next();
-                        if(token == ',') next();
-                    }
-                    next();
-                }
-                next();
-                type_size[bt] = i;
+                parse_struct_members(bt, current_struct);
             }
         }
 
@@ -1517,28 +1314,82 @@ struct ast_node* parse() {
             current = asm_node;
         }
 
-        while(token != ';' && token != '}') {
+        parse_global_declarations(bt);
+        next();
+    }
+    return root;
+}
+
+void parse_function_arguments(struct identifier *func) {
+    int i = 0;
+    int ty;
+    while(token != ')') {
+        ty = INT;
+        if(token == Int) next();
+        else if(token == Char) {
+            next();
+            ty = CHAR;
+        } else if(token == Struct) {
+            next();
+            if(token != Id) {
+                printf("%d: bad struct type\n", line);
+                exit(-1);
+            }
+            ty = last_identifier->stype;
+            next();
+        }
+
+        while(token == Mul) {
+            next();
+            ty = ty + PTR;
+        }
+
+        if(token != Id) {
+            printf("%d: bad function parameter %d %c\n", line, token, token);
+            exit(-1);
+        }
+
+        last_identifier->hclass = last_identifier->class;
+        last_identifier->htype = last_identifier->type;
+        last_identifier->hval = last_identifier->val;
+        last_identifier->class = Loc;
+        last_identifier->type = ty;
+        last_identifier->val = i++;
+
+        next();
+        if(token == ',') next();
+    }
+    next();
+    func->args = i;
+    local_offset = i;
+}
+
+int parse_local_declarations() {
+    int bt, ty, i = 0;
+    while(token == Int || token == Char || token == Struct) {
+        if (token == Int) bt = INT;
+        else if (token == Char) bt = CHAR;
+        else {
+            next();
+            if (token != Id) {
+                printf("%d: bad struct type\n", line);
+                exit(-1);
+            }
+            bt = last_identifier->stype;
+        }
+        next();
+        while (token != ';') {
             ty = bt;
-            while(token == Mul) {
+            while (token == Mul) {
                 next();
                 ty = ty + PTR;
             }
-
-            if(token != Id) {
-                printf("%d: bad global declaration\n", line);
+            if (token != Id) {
+                printf("%d: bad local declaration\n", line);
                 exit(-1);
             }
-
-            if(last_identifier->class) {
-                printf("%d: duplicate global definition, %d %.*s\n", line, last_identifier->class, last_identifier->name_length, last_identifier->name);
-                dump_identifier(last_identifier);
-                exit(-1);
-            }
-
+            last_identifier->type = ty;
             next();
-
-
-            /* Handle array declarations */
             if (token == BrakOpen) {
                 next();
                 if (token != Num) {
@@ -1553,165 +1404,187 @@ struct ast_node* parse() {
                     exit(-1);
                 }
                 next();
+            } else {
+                last_identifier->array = 0;
             }
+            if (last_identifier->class == Loc) {
+                printf("%d: duplicate local definition\n", line);
+                exit(-1);
+            }
+            last_identifier->htype = last_identifier->type;
+            last_identifier->hclass = last_identifier->class;
+            last_identifier->hval = last_identifier->val;
+            last_identifier->class = Loc;
             last_identifier->type = ty;
+            last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
+            i = last_identifier->val;
+            if (token == ',') next();
+        }
+        next();
+    }
+    return i;
+}
 
-            /* Check for function */
-            if(token == '(') {
+void parse_global_declarations(int bt) {
+    int ty;
+    struct identifier *func;
+    while(token != ';' && token != '}') {
+        ty = bt;
+        while(token == Mul) {
+            next();
+            ty = ty + PTR;
+        }
+
+        if(token != Id) {
+            printf("%d: bad global declaration\n", line);
+            exit(-1);
+        }
+
+        if(last_identifier->class) {
+            printf("%d: duplicate global definition, %d %.*s\n", line, last_identifier->class, last_identifier->name_length, last_identifier->name);
+            dump_identifier(last_identifier);
+            exit(-1);
+        }
+
+        next();
+
+        /* Handle array declarations */
+        if (token == BrakOpen) {
+            next();
+            if (token != Num) {
+                printf("%d: expected number for array size\n", line);
+                exit(-1);
+            }
+            last_identifier->array = ival;
+            ty = ty + PTR;
+            next();
+            if (token != BrakClose) {
+                printf("%d: expected closing bracket for array declaration\n", line);
+                exit(-1);
+            }
+            next();
+        }
+        last_identifier->type = ty;
+
+        /* Check for function */
+        if(token == '(') {
+            last_identifier->class = Fun;
+            last_identifier->val = function_id++;
+            add_function(last_identifier->val, last_identifier->name, last_identifier->name_length, NULL);
+
+            func = last_identifier;
+
+            next();
+
+            parse_function_arguments(func);
+
+            if(token != '{') {
+                printf("%d: bad function definition\n", line);
+                exit(-1);
+            }
+
+            next();
+
+            int loc_decl_i = parse_local_declarations();
+
+            struct ast_node *enter_node = zmalloc(sizeof(struct ast_node));
+            enter_node->type = AST_ENTER;
+            enter_node->value = (loc_decl_i);
+            enter_node->ident = *func;
+
+            current_enter_size = loc_decl_i;
+
+            if (!root) {
+                root = enter_node;
+            } else {
+                current->next = enter_node;
+            }
+            current = enter_node;
+
+            while(token != '}') {
+                struct ast_node *stmt = statement();
+                current->next = stmt;
+                current = stmt;
+            }
+
+            if(current->type != AST_RETURN) {
+                struct ast_node *ret_node = zmalloc(sizeof(struct ast_node));
+                ret_node->type = AST_LEAVE;
+                ret_node->value = current_enter_size;
+
+                current->next = ret_node;
+                current = ret_node;
+            }
+
+            last_identifier = sym_table;
+            while(last_identifier->tk) {
+                if(last_identifier->class == Loc) {
+                    last_identifier->class = last_identifier->hclass;
+                    last_identifier->type = last_identifier->htype;
+                    last_identifier->val = last_identifier->hval;
+                }
+                last_identifier = last_identifier + 1;
+            }
+        } else {
+            last_identifier->class = Glo;
+            last_identifier->val = (int)data;
+            /* Allocate space based on size */
+            data += (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
+        }
+        if(token == ',') next();
+    }
+}
+
+void parse_struct_members(int bt, struct identifier *current_struct) {
+    int i = 0;
+    int mbt, ty;
+    struct member *m;
+    while(token != '}') {
+        mbt = INT;
+        if(token == Int) next();
+        else if(token == Char) {
+            next();
+            mbt = CHAR;
+        } else if(token == Struct) {
+            next();
+            if(token != Id) {
+                printf("%d: bad struct member\n", line);
+                exit(-1);
+            }
+            mbt = last_identifier->stype;
+            next();
+        }
+
+        while(token != ';') {
+            ty = mbt;
+            while(token == Mul) {
+                next();
+                ty = ty + PTR;
+            }
+
+            if(token == '('){
                 last_identifier->class = Fun;
                 last_identifier->val = function_id++;
-                add_function(last_identifier->val, last_identifier->name, last_identifier->name_length, NULL);
-
-                func = last_identifier;
+                add_function(last_identifier->val, last_identifier->name, last_identifier->name_length, NULL);                
+                struct identifier *func = last_identifier;
 
                 next();
 
-                i = 0;
-                while(token != ')') {
-                    ty = INT;
-                    if(token == Int) next();
-                    else if(token == Char) {
-                        next();
-                        ty = CHAR;
-                    } else if(token == Struct) {
-                        next();
-                        if(token != Id) {
-                            printf("%d: bad struct type\n", line);
-                            exit(-1);
-                        }
-                        ty = last_identifier->stype;
-                        next();
-                    }
+                /* Parse function arguments */
+                parse_function_arguments(func);
 
-                    while(token == Mul) {
-                        next();
-                        
-                        ty = ty + PTR;
-                    }
-
-                    if(token != Id) {
-                        printf("%d: bad function definition\n", line);
-                        exit(-1);
-                    }
-
-                    /* TODO: Check for duplicate parameter definition */
-                    if(last_identifier->hclass == Loc) {
-                        printf("%d: duplicate parameter definition\n", line);
-                        exit(-1);
-                    }
-
-                    last_identifier->hclass = last_identifier->class;
-                    last_identifier->htype = last_identifier->type;
-                    last_identifier->hval = last_identifier->val;
-                    last_identifier->class = Loc;
-                    last_identifier->type = ty;
-                    last_identifier->val = i++;
-
-                    next();
-
-                    if(token == ',') next();
-                }
-                next();
-
-
-                if(token != '{') {
+                if(token != '{'){
                     printf("%d: bad function definition\n", line);
                     exit(-1);
                 }
-
-                func->args = i;
-                
-                local_offset = ++i;
-
                 next();
 
-                while(token == Int || token == Char || token == Struct) {
-                    if (token == Int) bt = INT;
-                    else if (token == Char) bt = CHAR;
-                    else {
-                        next();
-                        if (token != Id) {
-                            printf("%d: bad struct type\n", line);
-                            exit(-1);
-                        }
-                        bt = last_identifier->stype;
-                    }
-                    next();
-                    while (token != ';') {
-                        ty = bt;
-                        while (token == Mul) {
-                            next();
-                            ty = ty + PTR;
-                        }
-                        /* Handle array declarations */
-                        if (token == Id) {
-                            last_identifier->type = ty;
-                            next();
-
-                            /* Check if this is an array declaration */
-                            if (token == BrakOpen) {
-                                next();
-                                if (token != Num) {
-                                    printf("%d: expected number for array size\n", line);
-                                    exit(-1);
-                                }
-                                last_identifier->array = ival;
-                                last_identifier->array_type = ty;
-                                ty = ty + PTR;
-                                next();
-                                if (token != BrakClose) {
-                                    printf("%d: expected closing bracket for array declaration\n", line);
-                                    exit(-1);
-                                }
-                                next();
-                            } else {
-                                last_identifier->array = 0; /* Not an array */
-                            }
-
-                            /* Check for duplicate local definition */
-                            if (last_identifier->class == Loc) {
-                                printf("%d: duplicate local definition\n", line);
-                                exit(-1);
-                                
-                                /* TODO: handle dupllicate local */
-                            }
-
-                            /* Set identifier properties */
-                            last_identifier->htype = last_identifier->type;
-                            last_identifier->hclass = last_identifier->class;
-                            last_identifier->hval = last_identifier->val;
-                            last_identifier->class = Loc;
-                            last_identifier->type = ty;
-
-                            /* Allocate space based on size */
-                            last_identifier->val = i + (
-                                ty >= PTR ? sizeof(int) : (ty == 0 ? 4 : type_size[ty])
-                                ) * (last_identifier->array ? last_identifier->array : 1);
-
-                            i = last_identifier->val;
-
-                            /* Move to the next token */
-                            if (token == ',') next();
-                        } else {
-                            if (token == BrakOpen) {
-                                printf("%d: misplaced '['\n", line);
-                            } else {
-                                printf("%d: bad local declaration: %c %d\n", line, token, token);
-                            }
-                            exit(-1);
-                        }
-                    }
-                    next();
-                }
-
+                int loc_decl_i = parse_local_declarations();
                 
                 struct ast_node *enter_node = zmalloc(sizeof(struct ast_node));
                 enter_node->type = AST_ENTER;
-                enter_node->value = (i - local_offset);
+                enter_node->value = loc_decl_i;
                 enter_node->ident = *func;
-
-                current_enter_size = i - local_offset;
-
                 if (!root) {
                     root = enter_node;
                 } else {
@@ -1719,6 +1592,8 @@ struct ast_node* parse() {
                 }
                 current = enter_node;
 
+                current_enter_size = loc_decl_i;
+                
                 while(token != '}') {
                     struct ast_node *stmt = statement();
                     current->next = stmt;
@@ -1728,11 +1603,13 @@ struct ast_node* parse() {
                 if(current->type != AST_RETURN) {
                     struct ast_node *ret_node = zmalloc(sizeof(struct ast_node));
                     ret_node->type = AST_LEAVE;
-                    ret_node->value = current_enter_size;
+                    ret_node->value = loc_decl_i;
 
                     current->next = ret_node;
                     current = ret_node;
                 }
+
+                next();
 
                 last_identifier = sym_table;
                 while(last_identifier->tk) {
@@ -1743,17 +1620,36 @@ struct ast_node* parse() {
                     }
                     last_identifier = last_identifier + 1;
                 }
-            } else {
-                last_identifier->class = Glo;
-                last_identifier->val = (int)data;
-                /* Allocate space based on size */
-                data += (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
+                continue;
             }
+
+            if(token != Id) {
+                printf("%d: bad struct member %c (%d)\n", line, token, token);
+                exit(-1);
+            }
+
+            m = (struct member*) zmalloc(sizeof(struct member));
+            if(!m) {
+                printf("Unable to malloc struct member\n");
+                exit(-1);
+            }
+
+            m->ident = last_identifier;
+            m->type = ty;
+            m->offset = i;
+            m->next = members[bt];
+            members[bt] = m;
+
+            i = i + (ty >= PTR ? sizeof(int) : type_size[ty]);
+            i = (i + 3) & -4;
+            
+            next();
             if(token == ',') next();
         }
         next();
     }
-    return root;
+    next();
+    type_size[bt] = i;
 }
 
 void compile_and_run(char* filename, int argc, char *argv[]){
@@ -1884,7 +1780,7 @@ void print_ast_node(struct ast_node *node, int indent_level) {
             printf("String: %d\n", node->value);
             break;
         case AST_IDENT:
-            printf("Identifier: %.*s %d \n", node->ident.name_length, node->ident.name, node->ident.val);
+            printf("Identifier: %.*s %d (%d)\n", node->ident.name_length, node->ident.name, node->ident.val, node->value);
             break;
         case AST_BINOP:
             printf("Binop: %d\n", node->value);
