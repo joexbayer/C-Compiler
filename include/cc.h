@@ -33,6 +33,11 @@ enum TOKENS {
   Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Dot, Arrow, BrakOpen, BrakClose
 };
 
+typedef enum loc_type {
+    LOCAL_DEFINTION = 0,
+    LOCAL_PARAMETER,
+} loc_type_t;
+
 enum __BUILTIN {
     INTERRUPT = 64,
     INPORTB,
@@ -69,6 +74,7 @@ struct identifier {
     int name_length;
     int class;
     int type;
+    loc_type_t loc_type;
     int val;
     int stype;
     int hclass;

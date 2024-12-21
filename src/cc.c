@@ -72,6 +72,7 @@ static struct ast_node *expression(int level);
 static struct ast_node *statement();
 static void include(char *file);
 static int free_ast(struct ast_node *node);
+static void dump_identifier(struct identifier *id);
 
 int free_ast(struct ast_node *node) {
     if (!node) return 0;
@@ -474,11 +475,16 @@ static struct ast_node *expression(int level) {
             exit(-1);
     }
 
+
     if(token == BrakClose){
         return node;
     }
 
     while(token >= level){
+        if(token == BrakClose){
+            return node;
+        }
+
         left = node;
         node = parse_binary_op(left, level);
     }
@@ -544,14 +550,25 @@ static struct ast_node *parse_identifier() {
         node = create_ast_node(AST_FUNCALL, 0, 0);
         node->ident = *id;
         next();
+
+        int args = id->args;
+        int sys = id->class == Sys;
         if(token != ')'){
             node->left = expression(Assign);
+            args--;
             while(token == ','){
                 next();
                 struct ast_node *arg = expression(Assign);
                 arg->next = node->left;
                 node->left = arg;
+
+                args--;
             }
+        }
+
+        if(args && !sys){
+            printf("%d: wrong number of arguments in function call\n", line);
+            exit(-1);
         }
         next();
     } else if(id->class == Num){
@@ -561,7 +578,7 @@ static struct ast_node *parse_identifier() {
         node = create_ast_node(AST_IDENT, 0, id->type);
         node->ident = *id;
         if(id->class == Loc){
-            if(id->val > local_offset){
+            if(id->loc_type == LOCAL_DEFINTION){
                 node->value = -id->val;
             } else {
                 node->value = (local_offset+1) - id->val;
@@ -846,6 +863,8 @@ static struct ast_node *parse_binary_op(struct ast_node *left, int level) {
         case BrakOpen:
             node = parse_array_access(left);
             break;
+        case BrakClose:
+            return node;
         default:
             printf("%d: compiler error, token = %d\n", line, token);
             exit(-1);
@@ -952,6 +971,7 @@ static struct ast_node *parse_array_access(struct ast_node *left) {
 
     node = create_ast_node(left->left->ident.array == 0 ? AST_DEREF : AST_ADDR, 0, left->data_type - PTR);
     node->left = left;
+
     return node;
 }
 
@@ -1353,6 +1373,7 @@ void parse_function_arguments(struct identifier *func) {
         last_identifier->htype = last_identifier->type;
         last_identifier->hval = last_identifier->val;
         last_identifier->class = Loc;
+        last_identifier->loc_type = LOCAL_PARAMETER;
         last_identifier->type = ty;
         last_identifier->val = i++;
 
@@ -1415,6 +1436,7 @@ int parse_local_declarations() {
             last_identifier->hclass = last_identifier->class;
             last_identifier->hval = last_identifier->val;
             last_identifier->class = Loc;
+            last_identifier->loc_type = LOCAL_DEFINTION;
             last_identifier->type = ty;
             last_identifier->val = i + (ty >= PTR ? sizeof(int) : type_size[ty]) * (last_identifier->array ? last_identifier->array : 1);
             i = last_identifier->val;
@@ -1840,7 +1862,7 @@ void print_ast_node(struct ast_node *node, int indent_level) {
             printf("Addrref.\n");
             break;
         case AST_ENTER:
-            printf("Enter 0x%x (%.*s)\n", node->value, node->ident.name_length, node->ident.name);
+            printf("Enter 0x%x (%.*s) (%d args)\n", node->value, node->ident.name_length, node->ident.name, node->ident.args);
             break;
         case AST_LEAVE:
             printf("Leave\n");
@@ -1897,10 +1919,6 @@ void usage(char *argv[]){
 int main(int argc, char *argv[]) {
     config.source = "add.c";
 
-    if(argc < 2){
-        usage(argv);
-        return 0;
-    }
     config.source = argv[1];
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-') {
@@ -1908,10 +1926,15 @@ int main(int argc, char *argv[]) {
                 config.output = argv[++i];
             } else if (argv[i][1] == 's') {
                 config.assembly_set = 1;
-            } else if (argv[i][1] == '-' && argv[i][2] == 'o' && argv[i][3] == 'r' && argv[i][4] == 'g' && i + 1 < argc) {
-                //config.org = strtol(argv[++i], NULL, 0);
+            } else if (argv[i][1] == '-' && argv[i][2] == 'n' && argv[i][3] == 'o' && argv[i][4] == '-' && argv[i][5] == 'e' && argv[i][6] == 'l' && argv[i][7] == 'f') {
+                config.elf = 0;
+            } else if (argv[i][1] == '-' && argv[i][2] == 'o' && argv[i][3] == 'r' && argv[i][4] == 'g' && i + 1 < argc) { 
+#ifdef NATIVE                
+                config.org = strtol(argv[++i], NULL, 0);
+#else
                 printf("Error: org not supported\n");
                 exit(-1);
+#endif
             } else if (argv[i][1] == '-' && argv[i][2] == 'a' && argv[i][3] == 's' && argv[i][4] == 't') {
                 config.ast = 1;
             } else {

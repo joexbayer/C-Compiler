@@ -479,6 +479,25 @@ void generate_x86(struct ast_node *node, void* *file) {
 
                         break;
                     }
+                    case INPORTB: {
+                        asmprintf(file, "xorl %%eax, %%eax\n");
+                        opcodes[opcodes_count++] = 0x31;
+                        opcodes[opcodes_count++] = 0xc0;
+                        asmprintf(file, "xorl %%edx, %%edx\n");
+                        opcodes[opcodes_count++] = 0x31;
+                        opcodes[opcodes_count++] = 0xd2;
+                        asmprintf(file, "popl %%edx\n"); opcodes[opcodes_count++] = 0x5a;
+                        asmprintf(file, "inb %%dx, %%al\n");
+                        opcodes[opcodes_count++] = 0xec;
+                        break;
+                    }
+                    case OUTPORTB: {
+                        asmprintf(file, "popl %%edx\n"); opcodes[opcodes_count++] = 0x5a;
+                        asmprintf(file, "popl %%eax\n"); opcodes[opcodes_count++] = 0x58;
+                        asmprintf(file, "outb %%al, %%dx\n");
+                        opcodes[opcodes_count++] = 0xee;
+                        break;
+                    }
                     default: {
                         printf("Unsupported builtin %d\n", node->ident.val);
                         exit(-1);
@@ -1059,8 +1078,10 @@ void write_opcodes(){
     }
 
 #ifdef NATIVE
-    write_elf_header(buffer, config.org, opcodes_count, 0);
-    pos += ELF_HEADER_SIZE;
+    if(config.elf){
+        write_elf_header(buffer, config.org, opcodes_count, 0);
+        pos += ELF_HEADER_SIZE;
+    }
 #endif
 
     memcpy(buffer + pos, opcodes, opcodes_count);

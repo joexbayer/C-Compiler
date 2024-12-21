@@ -12,7 +12,7 @@ struct object {
         int type;
         type = value;
         object->value = type;
-        return object->value;
+        return 0;
     };
 
     int reset(struct object *object) {
@@ -28,11 +28,21 @@ struct object {
     int type;
 };
 
+int get2(struct object *object, int value) {
+    int type;
+    type = value;
+    object->value = type;
+    return 0;
+};
+
+
 int main() {
     struct object obj;
     obj.value = 10;
 
     obj.get(64);
+
+    get2(&obj, 64);
     
     obj.increment(5);
     
