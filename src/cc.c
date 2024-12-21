@@ -1763,12 +1763,6 @@ void compile_and_run(char* filename, int argc, char *argv[]){
 }
 
 int cleanup(){
-    free(sym_table);
-    free(org_data);
-    free(type_size);
-    //free(include_buffer);
-    free(last_position);
-
     for(int i = 0; i < MAX_MEMBERS; i++){
         struct member *m = members[i];
         while(m){
@@ -1783,7 +1777,13 @@ int cleanup(){
     /* Free include buffer */
     for(int i = 0; i < include_count; i++){
         free(includes[i].buffer);
-    }   
+    }
+
+    free(sym_table);
+    free(org_data);
+    free(type_size);
+    //free(include_buffer);
+    free(last_position);   
 
     return 0;
 }
