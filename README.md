@@ -1,94 +1,102 @@
-# Complete rewrite and extension of c4 (C in four functions) by Robert Swierczek for RetrOS-32
-
+# A custom C compiler to x86 32bit machine code.
 ## Mainly used as a submodule for RetrOS-32
-### Checkout the linux branch for version working on linux.
 
-## Info
-An exercise in minimalism.
-Based on branch: switch-and-structs
+### Building the Project
 
-Needs to be compiled with -m32 flag to work as int and pointers are 32 bit.
+To build the project on Linux, you can use the provided `Makefile`. 
 
-## Syntax
-
-
-## Compile
-
-Compiles to 32bit x86 machine code. 
-
-## Usage
-To compile 
-```bash
+```sh
 make
 ```
 
-### For Linux
-```bash
-make -f Makefile.linux
+This creates the `cc` object file which is the compiler.
+### Usage
+
+To use the compiler, run the following command:
+
+```sh
+./cc input_file -o output_file
 ```
 
+#### Options
+
+- `input_file`: Must be the first argument!
+- `-o output_file`: Specify the output file
+- `--no-elf`: Do not generate ELF file (only available in Linux builds)
+- `--org <address>`: Set origin address (only available in Linux builds)
+- `-s`: Print assembly
+- `--ast`: Print AST tree
+
+By default ELF will be used if compile on Linux.
+
+To clean up the build files, run:
+
+```sh
+make clean
 ```
-Usage: ./cc input_file -o output_file [-s]
-Options
-  input_file: Must be first argument!
-  -o output_file: Specify output file
-  -s: Print assembly
-  --ast: Print AST tree
-```
 
-Example:
+### Quirks
 
-```bash
-./cc -o demo.o demo.c
-./demo.o
-```
+This project currently supports `int` and `char` data types, as well as pointers and structs.
+It also includes support for both global and local arrays.
+Please note that local variables must be declared at the beginning of a function and initialized subsequently.
+`#include` can include other .c files, which would be the same as pasting the code. (Order matters).
+A file can only be included once, and wont be included again if the same `#include "file.c"` is used multiple places. 
 
-## Changes
-Because of the rewrite to be more readable and extendable, the code is not self compilable anymore.
+#### Builtins
 
-### Include
-Added include directive to include other files in the main file.
-Files need to be included in the order they are used.
+Currently supports __interrupt, __inportb __outportb builtins (Example in lib/linux.c)
 
-## Linux library
-Includes a linux library in lib/linux.c
+### Struct Functions
 
-### Builtin functions
+The project now supports functions within structs. Here is an example of how to define and use struct functions:
 
-#### Used to call interrupts and I/O functions
 ```c
-void __interrupt(int number, int eax, int ebx, int ecx, int edx);
-```
+struct object {
+  // Value needs to be declared before usage
+  int value;
 
-#### Example of usage:
+  int set(struct object *object, int value) {
+    object->value = value;
+    return 0;
+  };
 
-math.c:
-```c
-int add(int a, int b) {
-    return a + b;
-}
-```
+  int reset(struct object *object) {
+    object->value = 0;
+    return object->value;
+  };
 
-main.c:
-```c
-#include "lib/math.c"
+  int increment(struct object *object, int incrementValue) {
+    object->value = object->value + incrementValue;
+    return object->value;
+  };
+
+  int type;
+};
 
 int main() {
-    int a;
-    int b;
-    int c;
+  struct object obj;
+  obj.set(64);
 
-    a = 1;
-    b = 2;
-    c = add(a, b);
-    return c;
+  obj.increment(5);
+
+  obj.reset();
+
+  return obj.value;
 }
 ```
 
-### Data section
+This example demonstrates how to define functions within a struct and how to use them in the `main` function.
 
-#### x86 m32
-With x86 the Data section is located at the start of the file.
-With ELF, its located after the ELF header.
-However, the first 5 bytes are reserved for the JMP to main.
-Access to the data section is dependent on the ORG. Note: Big global array declartions will bloat the binary.
+### Tests
+
+```sh
+make tests
+```
+
+### Examples
+
+Checkout the files in /tests for examples.
+
+
+## This project is a complete rewrite and inspired by c4 (C in four functions) by Robert Swierczek for RetrOS-32

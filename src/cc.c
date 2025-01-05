@@ -1911,6 +1911,10 @@ void usage(char *argv[]){
     printf("Options\n");
     printf("  input_file: Must be first argument!\n");
     printf("  -o output_file: Specify output file\n");
+#ifndef NATIVE
+    printf("  --no-elf: Do not generate ELF file\n");
+    printf("  --org <address>: Set origin address\n");
+#endif
     printf("  -s: Print assembly\n");
     printf("  --ast: Print AST tree\n");
     exit(EXIT_FAILURE);
