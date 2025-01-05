@@ -20,6 +20,14 @@ int main(){
     test(arr2[1] == 2);
     test(arr2[2] == 3);
 
+    test(arr2[0 + 0] == 1);
+    test(arr2[0 + 1] == 2);
+    test(arr2[0 + 2] == 3);
+
+    test(arr2[0] == arr[0]);
+    test(arr2[1] == arr[1]);
+    test(arr2[2] == arr[2]);
+
 
     return 0;
 }
