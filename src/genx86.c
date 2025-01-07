@@ -5,6 +5,10 @@
 #include <func.h>
 #include <io.h>
 
+#ifdef NATIVE
+#include <sys/stat.h>
+#endif
+
 #include <stdint.h>
 
 #define ELF_HEADER_SIZE 84
@@ -527,8 +531,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                     arg = arg->next;
                 }
                 if (arg_count > 0 && node->ident.class == Fun) {
-                    asmprintf(file, "addl $%d, %%esp # Cleanup stack pushed arguments\n", arg_count * 4);
-
+                    asmprintf(file, "addl $%d, %%esp # Cleanup stack\n", arg_count * 4);
                     opcodes[opcodes_count++] = 0x81;
                     opcodes[opcodes_count++] = 0xc4;
                     *((int*)(opcodes + opcodes_count)) = arg_count * 4;

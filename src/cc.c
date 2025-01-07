@@ -83,6 +83,7 @@ int free_ast(struct ast_node *node) {
 }
 
 int dbgprintf(const char *fmt, ...){
+    (void)fmt;
 #ifdef DEBUG
     va_list args;
     va_start(args, fmt);
@@ -416,12 +417,7 @@ static struct ast_node *parse_array_access(struct ast_node *left);
  * @return struct ast_node* - the root of the constructed AST for the expression
  */
 static struct ast_node *expression(int level) {
-    struct ast_node *node = NULL, *left = NULL, *right = NULL;
-    int t; /* Temporary register */
-    struct identifier *id;
-    struct member *m;
-    int sz;
-
+    struct ast_node *node = NULL, *left = NULL;
     switch(token){
         case 0:
             printf("%d: unexpected token EOF of expression\n", line);
@@ -691,8 +687,6 @@ static struct ast_node *parse_inc_dec() {
 static struct ast_node *parse_binary_op(struct ast_node *left, int level) {
     struct ast_node *node = NULL, *right = NULL;
     int t;
-    struct member *m;
-    int sz;
 
     switch(token){
         case Assign:
@@ -1211,10 +1205,6 @@ void parse_struct_members(int bt, struct identifier *current_struct);
 struct ast_node* parse() {
     int i;
     int bt;
-    int ty;
-    int mbt;
-    struct member *m;
-    struct identifier* func;
     struct identifier* current_struct;
 
     while(token) {
@@ -1289,7 +1279,7 @@ struct ast_node* parse() {
             next(); // Move past the identifier
 
             if (token != '{') {
-                printf("%d: Expected '{' after asm %.*s\n", id->name_length, id->name);
+                printf("%d: Expected '{' after asm %.*s\n", line, id->name_length, id->name);
                 exit(-1);
             }
 
@@ -1677,7 +1667,6 @@ void parse_struct_members(int bt, struct identifier *current_struct) {
 void compile_and_run(char* filename, int argc, char *argv[]){
     
     int fd;
-    struct identifier *main_identifier;
 
     if ((fd = cc_open(config.source,
 #ifndef NATIVE
@@ -1723,7 +1712,6 @@ void compile_and_run(char* filename, int argc, char *argv[]){
     next();
     last_identifier->tk = Char;
     next();
-    main_identifier = last_identifier;
 
     /* Read in src file */
     if (!(last_position = current_position = zmalloc(POOL_SIZE))) {
