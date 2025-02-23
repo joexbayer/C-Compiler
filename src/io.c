@@ -1,7 +1,11 @@
 #include <cc.h>
 
 int cc_open(char *file, int flags) {
+#ifdef NATIVE
+    return open(file, flags, 0666);
+#else
     return open(file, flags);
+#endif
 }
 
 int cc_read(int fd, char *buffer, int size) {
