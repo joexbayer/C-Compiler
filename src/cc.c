@@ -87,7 +87,11 @@ int dbgprintf(const char *fmt, ...){
 #ifdef DEBUG
     va_list args;
     va_start(args, fmt);
+#ifdef NATIVE
+    vprintf(fmt, args);
+#else
     printf(fmt, args);
+#endif
     va_end(args);
 #endif
     return 0;
@@ -111,7 +115,11 @@ static int find_include(char *file) {
 
 static int add_include(char *file, char *buffer) {
     if (include_count < 32) {
-        strcpy(includes[include_count].file, file);
+        size_t file_len = strlen(file);
+        if (file_len >= sizeof(includes[include_count].file)) {
+            return 0;
+        }
+        memcpy(includes[include_count].file, file, file_len + 1);
         includes[include_count].buffer = buffer;
         include_count++;
         return 1;
@@ -171,8 +179,9 @@ static void include(char *file) {
             line = original_line;
 
             dbgprintf("Finished including file: %s\n", file);
-
-            add_include(file, include_buffer);
+            if (!add_include(file, include_buffer)) {
+                free(include_buffer);
+            }
             return;
         } else {
             printf("Failed to read from file");
@@ -187,211 +196,275 @@ static void include(char *file) {
     }
 }
 
-static void next() {
-    char *position;
+static int is_space(int ch) {
+    return ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f' || ch == '\r';
+}
 
-    while((token = *current_position)){
+static void skip_line_comment(void) {
+    while (*current_position != 0 && *current_position != '\n') {
+        ++current_position;
+    }
+}
+
+static void skip_block_comment(void) {
+    while (*current_position != 0) {
+        if (*current_position == '\n') {
+            ++line;
+        }
+        if (current_position[0] == '*' && current_position[1] == '/') {
+            current_position += 2;
+            return;
+        }
+        ++current_position;
+    }
+    printf("%d: unterminated block comment\n", line);
+    exit(-1);
+}
+
+static void skip_to_line_end(void) {
+    while (*current_position != 0 && *current_position != '\n') {
+        ++current_position;
+    }
+}
+
+static void handle_include_directive(void) {
+    if (strncmp(current_position, "include", 7) == 0 && current_position[7] == ' ') {
+        current_position += 8; /* Move past "include " */
+        while (*current_position == ' ') {
+            current_position++;
+        }
+        if (*current_position == '"') {
+            char include_file[256], *start;
+            int len;
+            start = ++current_position;
+
+            while (*current_position != '"' && *current_position != '\0') {
+                current_position++;
+            }
+            if (*current_position == '"') {
+                len = current_position - start;
+                if (len <= 0 || len >= (int)sizeof(include_file)) {
+                    printf("%d: include path too long\n", line);
+                    exit(-1);
+                }
+                memcpy(include_file, start, len);
+                include_file[len] = '\0';
+                include(include_file);
+            } else {
+                printf("%d: unterminated include path\n", line);
+                exit(-1);
+            }
+        }
+    }
+    skip_to_line_end();
+}
+
+static int lex_identifier(void) {
+    if (!IS_LETTER(token)) {
+        return 0;
+    }
+
+    char *position = current_position - 1;
+
+    while (IS_LETTER(*current_position) || IS_DIGIT(*current_position)) {
+        token = token * 147 + *current_position++;
+    }
+
+    token = (token << 6) + (current_position - position);
+    last_identifier = sym_table;
+
+    while (last_identifier->tk) {
+        if (token == last_identifier->hash &&
+            !memcmp(last_identifier->name, position, current_position - position)) {
+            token = last_identifier->tk;
+            return 1;
+        }
+        last_identifier = last_identifier + 1;
+    }
+
+    last_identifier->name = position;
+    last_identifier->name_length = current_position - position;
+    last_identifier->hash = token;
+    last_identifier->tk = Id;
+    last_identifier->class = 0;
+    token = Id;
+    return 1;
+}
+
+static int lex_number(void) {
+    if (!IS_DIGIT(token)) {
+        return 0;
+    }
+
+    if ((ival = token - '0')) {
+        while (*current_position >= '0' && *current_position <= '9') {
+            ival = ival * 10 + *current_position++ - '0';
+        }
+    } else if (*current_position == 'x' || *current_position == 'X') {
+        while ((token = *++current_position) && IS_HEX_DIGIT(token)) {
+            ival = ival * 16 + (token & 15) + (token >= 'A' ? 9 : 0);
+        }
+    } else {
+        while (*current_position >= '0' && *current_position <= '7') {
+            ival = ival * 8 + *current_position++ - '0';
+        }
+    }
+    token = Num;
+    return 1;
+}
+
+static int lex_string_literal(int quote) {
+    if (quote != '"' && quote != '\'') {
+        return 0;
+    }
+
+    char *position = data;
+    while (*current_position != 0 && *current_position != quote) {
+        if ((ival = *current_position++) == '\\') {
+            switch (ival = *current_position++) {
+                case 'n': ival = '\n'; break;
+                case 't': ival = '\t'; break;
+                case 'v': ival = '\v'; break;
+                case 'f': ival = '\f'; break;
+                case 'r': ival = '\r';
+            }
+        }
+        *data++ = ival;
+    }
+    if (*current_position == 0) {
+        printf("%d: unterminated string literal\n", line);
+        exit(-1);
+    }
+    *data++ = 0;
+    ++current_position;
+
+    if (quote == '"') {
+        ival = (int) position;
+    } else {
+        token = Num;
+    }
+    return 1;
+}
+
+static int lex_operator(int ch) {
+    switch (ch) {
+        case '=':
+            if (*current_position == '=') {
+                ++current_position;
+                token = Eq;
+            } else {
+                token = Assign;
+            }
+            return 1;
+        case '+':
+            if (*current_position == '+') {
+                ++current_position;
+                token = Inc;
+            } else {
+                token = Add;
+            }
+            return 1;
+        case '-':
+            if (*current_position == '-') {
+                ++current_position;
+                token = Dec;
+            } else if (*current_position == '>') {
+                ++current_position;
+                token = Arrow;
+            } else {
+                token = Sub;
+            }
+            return 1;
+        case '!':
+            if (*current_position == '=') {
+                ++current_position;
+                token = Ne;
+            }
+            return 1;
+        case '<':
+            if (*current_position == '=') {
+                ++current_position;
+                token = Le;
+            } else if (*current_position == '<') {
+                ++current_position;
+                token = Shl;
+            } else {
+                token = Lt;
+            }
+            return 1;
+        case '>':
+            if (*current_position == '=') {
+                ++current_position;
+                token = Ge;
+            } else if (*current_position == '>') {
+                ++current_position;
+                token = Shr;
+            } else {
+                token = Gt;
+            }
+            return 1;
+        case '|':
+            if (*current_position == '|') {
+                ++current_position;
+                token = Lor;
+            } else {
+                token = Or;
+            }
+            return 1;
+        case '&':
+            if (*current_position == '&') {
+                ++current_position;
+                token = Lan;
+            } else {
+                token = And;
+            }
+            return 1;
+        case '^': token = Xor; return 1;
+        case '%': token = Mod; return 1;
+        case '*': token = Mul; return 1;
+        case '[': token = BrakOpen; return 1;
+        case ']': token = BrakClose; return 1;
+        case '?': token = Cond; return 1;
+        case '.': token = Dot; return 1;
+        default:
+            return 0;
+    }
+}
+
+static void next() {
+    while ((token = *current_position)) {
         ++current_position;
 
-        /* Check if new identifier*/
-        if(IS_LETTER(token)){
-            /* Store the current position */
-            position = current_position - 1;
-
-            /* Move to the end of the identifier */
-            while(IS_LETTER(*current_position) || IS_DIGIT(*current_position)){
-                token = token * 147 + *current_position++;
-            }
-
-             /* Hash the token and include the length */
-            token = (token << 6) + (current_position - position);
-            last_identifier = sym_table;
-
-            /* Iterate over the symbol table to check for existing identifiers */
-            while(last_identifier->tk){
-                /* Compare the hash and name of the current identifier with the token */
-                if(token == last_identifier->hash && !memcmp(last_identifier->name, position, current_position - position)){
-                    token = last_identifier->tk;
-                    return;
-                }
-                last_identifier = last_identifier + 1;
-            }
-
-            /* Store the name, hash, and token type of the new identifier */
-            last_identifier->name = position;
-            last_identifier->name_length = current_position - position;
-
-            /* Null terminate name */
-            last_identifier->hash = token;
-            last_identifier->tk = Id;
-            last_identifier->class = 0;
-            token = Id;
-            return;
-
-        } else if (IS_DIGIT(token)){
-            /* Convert the token to an integer */
-            if((ival = token - '0')){
-                while (*current_position >= '0' && *current_position <= '9')
-                    ival = ival * 10 + *current_position++ - '0'; 
-            } else if(*current_position == 'x' || *current_position == 'X'){
-                /* Hex */
-                while((token = *++current_position) && IS_HEX_DIGIT(token)){
-                    ival = ival * 16 + (token & 15) + (token >= 'A' ? 9 : 0);
-                }
-            } else {
-                /* Octal */
-                while(*current_position >= '0' && *current_position <= '7'){
-                    ival = ival * 8 + *current_position++ - '0';
-                }
-            }
-            token = Num;
+        if (token == '\n') {
+            ++line;
+            continue;
+        }
+        if (is_space(token)) {
+            continue;
+        }
+        if (token == '/' && *current_position == '/') {
+            skip_line_comment();
+            continue;
+        }
+        if (token == '/' && *current_position == '*') {
+            current_position++;
+            skip_block_comment();
+            continue;
+        }
+        if (token == '#') {
+            handle_include_directive();
+            continue;
+        }
+        if (lex_identifier() || lex_number()) {
             return;
         }
-
-        /* Check for new line, spaces, tabs, etc */
-        switch(token){
-            case '\n':
-                ++line;
-            case ' ': case '\t': case '\v': case '\f': case '\r':
-                break;
-            /* Check for comments or division */
-            case '/':
-                if(*current_position == '/'){
-                    while(*current_position != 0 && *current_position != '\n'){
-                        ++current_position;
-                    }
-                } else {
-                    token = Div;
-                    return;
-                }
-                break;
-            case '#':
-               if (strncmp(current_position, "include", 7) == 0 && current_position[7] == ' ') {
-                    current_position += 8; /* Move past "include " */
-                    while (*current_position == ' ') current_position++;
-                    if (*current_position == '"') {
-                        char include_file[256], *start;
-                        int len;
-                        start = ++current_position;
-
-                        while (*current_position != '"' && *current_position != '\0') current_position++;
-                        if (*current_position == '"') {
-                            len = current_position - start;
-                            strncpy(include_file, start, len);
-                            include_file[len] = '\0';
-
-                            include(include_file);
-                        }
-                    }
-                }
-                while (*current_position != 0 && *current_position != '\n') {
-                    ++current_position;
-                }
-                break;
-            /* Check for string literals */
-            case '"':
-            case '\'':
-                /* Write string to data */
-                position = data;
-                while (*current_position != 0 && *current_position != token) {
-                    if ((ival = *current_position++) == '\\') {
-                        switch (ival = *current_position++) {
-                            case 'n': ival = '\n'; break;
-                            case 't': ival = '\t'; break;
-                            case 'v': ival = '\v'; break;
-                            case 'f': ival = '\f'; break;
-                            case 'r': ival = '\r';
-                        }
-                    }
-                    *data++ = ival;
-                }
-                *data++ = 0; /* Null-terminate the string */
-                ++current_position;
-                if (token == '"') ival = (int) position; else token = Num;
-                return;
-            case '=':
-                /* Check for equality or assignment */
-                if(*current_position == '='){
-                    ++current_position;
-                    token = Eq;
-                } else {
-                    token = Assign;
-                }
-                return;
-            case '+':
-                if(*current_position == '+'){
-                    ++current_position;
-                    token = Inc;
-                } else {
-                    token = Add;
-                }
-                return;
-            case '-':
-                if(*current_position == '-'){
-                    ++current_position;
-                    token = Dec;
-                /* Check for arrow or subtraction */
-                } else if (*current_position == '>'){
-                    ++current_position;
-                    token = Arrow;
-                } else {
-                    token = Sub;
-                }
-                return;
-            case '!':
-                if(*current_position == '='){
-                    ++current_position;
-                    token = Ne;
-                }
-                return;
-            case '<':
-                if(*current_position == '='){
-                    ++current_position;
-                    token = Le;
-                } else if(*current_position == '<'){
-                    ++current_position;
-                    token = Shl;
-                } else {
-                    token = Lt;
-                }
-                return;
-            case '>':
-                if(*current_position == '='){
-                    ++current_position;
-                    token = Ge;
-                } else if(*current_position == '>'){
-                    ++current_position;
-                    token = Shr;
-                } else {
-                    token = Gt;
-                }
-                return;
-            case '|':
-                if(*current_position == '|'){
-                    ++current_position;
-                    token = Lor;
-                } else {
-                    token = Or;
-                }
-                return;
-            case '&':
-                if(*current_position == '&'){
-                    ++current_position;
-                    token = Lan;
-                } else {
-                    token = And;
-                }
-                return;
-            case '^': token = Xor; return;
-            case '%': token = Mod; return;
-            case '*': token = Mul; return;
-            case '[': token = BrakOpen; return;
-            case ']': token = BrakClose; return;
-            case '?': token = Cond; return;
-            case '.' : token = Dot; return;
-            default:
-                return;
+        if (lex_string_literal(token)) {
+            return;
         }
+        if (lex_operator(token)) {
+            return;
+        }
+        return;
     }
 }
 

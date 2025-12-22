@@ -16,6 +16,64 @@
 static uint8_t* opcodes;
 static int opcodes_count = 0;
 
+int asmprintf(void* file, const char *format, ...);
+
+static void emit_u8(uint8_t value) {
+    opcodes[opcodes_count++] = value;
+}
+
+static void emit_i32(int value) {
+    memcpy(opcodes + opcodes_count, &value, sizeof(value));
+    opcodes_count += (int)sizeof(value);
+}
+
+static int is_char_type(int data_type) {
+    return data_type == CHAR;
+}
+
+static void emit_load_from_ebp(void *file, int offset, int data_type) {
+    if (is_char_type(data_type)) {
+        asmprintf(file, "movzbl %d(%%ebp), %%eax\n", offset);
+        emit_u8(0x0f);
+        emit_u8(0xb6);
+        emit_u8(0x45);
+        emit_u8((uint8_t)offset);
+        return;
+    }
+
+    asmprintf(file, "movl %d(%%ebp), %%eax\n", offset);
+    emit_u8(0x8b);
+    emit_u8(0x45);
+    emit_u8((uint8_t)offset);
+}
+
+static void emit_load_from_eax(void *file, int data_type) {
+    if (is_char_type(data_type)) {
+        asmprintf(file, "movzbl (%%eax), %%eax\n");
+        emit_u8(0x0f);
+        emit_u8(0xb6);
+        emit_u8(0x00);
+        return;
+    }
+
+    asmprintf(file, "movl (%%eax), %%eax\n");
+    emit_u8(0x8b);
+    emit_u8(0x00);
+}
+
+static void emit_store_to_ebx(void *file, int data_type) {
+    if (is_char_type(data_type)) {
+        asmprintf(file, "movb %%al, (%%ebx)\n");
+        emit_u8(0x88);
+        emit_u8(0x03);
+        return;
+    }
+
+    asmprintf(file, "movl %%eax, (%%ebx)\n");
+    emit_u8(0x89);
+    emit_u8(0x03);
+}
+
 int asmprintf(void* file, const char *format, ...) {
     if(config.assembly_set == 0){
         return 0;
@@ -36,64 +94,58 @@ int asmprintf(void* file, const char *format, ...) {
 #define ADJUST_SIZE(node) (node->value > 0 ? node->value*4 : node->value)
 
 #define GEN_X86_LEAL_EBP(val)\
-    opcodes[opcodes_count++] = 0x8d;\
-    opcodes[opcodes_count++] = 0x45;\
-    *((int*)(opcodes + opcodes_count)) = val;\
-    opcodes_count += 4;
+    emit_u8(0x8d);\
+    emit_u8(0x45);\
+    emit_i32(val);
 
 #define GEN_X86_ESP_EBP()\
-    opcodes[opcodes_count++] = 0x89;\
-    opcodes[opcodes_count++] = 0xe5;
+    emit_u8(0x89);\
+    emit_u8(0xe5);
 
 #define GEN_X86_PUSH_EBP()\
-    opcodes[opcodes_count++] = 0x55;
+    emit_u8(0x55);
 
 #define GEN_X86_SUB_ESP(val)\
-    opcodes[opcodes_count++] = 0x81;\
-    opcodes[opcodes_count++] = 0xec;\
-    *((int*)(opcodes + opcodes_count)) = val;\
-    opcodes_count += 4;
+    emit_u8(0x81);\
+    emit_u8(0xec);\
+    emit_i32(val);
 
 #define GEN_X86_ADD_ESP(val)\
-    opcodes[opcodes_count++] = 0x81;\
-    opcodes[opcodes_count++] = 0xc4;\
-    *((int*)(opcodes + opcodes_count)) = val;\
-    opcodes_count += 4;
+    emit_u8(0x81);\
+    emit_u8(0xc4);\
+    emit_i32(val);
 
 #define GEN_X86_POP_EBP()\
-    opcodes[opcodes_count++] = 0x5d;
+    emit_u8(0x5d);
 
 #define GEN_X86_POP_EBX()\
-    opcodes[opcodes_count++] = 0x5b;
+    emit_u8(0x5b);
 
 #define GEN_X86_PUSH_EAX()\
-    opcodes[opcodes_count++] = 0x50;
+    emit_u8(0x50);
 
 #define GEN_X86_RET()\
-    opcodes[opcodes_count++] = 0xc3;
+    emit_u8(0xc3);
 
 #define GEN_X86_CALL(offset)\
-    opcodes[opcodes_count++] = 0xe8;\
-    *((int*)(opcodes + opcodes_count)) = offset;\
-    opcodes_count += 4;
+    emit_u8(0xe8);\
+    emit_i32(offset);
 
 #define GEN_X86_JMP(offset)\
-    opcodes[opcodes_count++] = 0xe9;\
-    *((int*)(opcodes + opcodes_count)) = offset;\
-    opcodes_count += 4;
+    emit_u8(0xe9);\
+    emit_i32(offset);
 
 #define GEN_X86_EAX_EBX()\
-    opcodes[opcodes_count++] = 0x89;\
-    opcodes[opcodes_count++] = 0xc3;
+    emit_u8(0x89);\
+    emit_u8(0xc3);
 
 #define GEN_X86_IMD_EAX(val)\
-    opcodes[opcodes_count++] = 0xb8;\
-    *((int*)(opcodes + opcodes_count)) = val;\
-    opcodes_count += 4;
+    emit_u8(0xb8);\
+    emit_i32(val);
 
 #define GEN_X86_INT(val)\
-    opcodes[opcodes_count++] = 0xcd;\
-    opcodes[opcodes_count++] = val;
+    emit_u8(0xcd);\
+    emit_u8(val);
 
 int derefence = 0;
 int lable_count = 0;
@@ -123,18 +175,7 @@ void generate_x86(struct ast_node *node, void* *file) {
             if(node->ident.class == Loc && (node->ident.type <= INT || node->ident.type >= PTR)  && node->ident.array == 0){
 
                 // Checking node value because stack pushed chars are stored as ints
-                if(node->data_type == CHAR && node->value < 0 && 0){ 
-                    asmprintf(file, "movzbl %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->ident.type);
-                    opcodes[opcodes_count++] = 0x0f;
-                    opcodes[opcodes_count++] = 0xb6;
-                    opcodes[opcodes_count++] = ADJUST_SIZE(node);
-
-                } else {
-                    asmprintf(file, "movl3 %d(%%ebp), %%eax # Type %d\n", node->value > 0 ? node->value*4 : node->value, node->data_type);
-                    opcodes[opcodes_count++] = 0x8b;
-                    opcodes[opcodes_count++] = 0x45;
-                    opcodes[opcodes_count++] = ADJUST_SIZE(node);
-                }
+                emit_load_from_ebp(file, ADJUST_SIZE(node), node->ident.type);
                 
                 return;
             }
@@ -148,9 +189,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 *((int*)(opcodes + opcodes_count)) = address;
                 opcodes_count += 4;
 
-                asmprintf(file, "movl3 (%%eax), %%eax\n");
-                opcodes[opcodes_count++] = 0x8b;
-                opcodes[opcodes_count++] = 0x00;
+                emit_load_from_eax(file, node->ident.type);
                 return;
             }
 
@@ -175,16 +214,7 @@ void generate_x86(struct ast_node *node, void* *file) {
 
             /* Load value if it's not a pointer type */
             if ((node->ident.type <= INT || node->ident.type > PTR) && node->ident.array == 0) {
-                asmprintf(file, "%s (%%eax), %%eax\n", (node->ident.type == CHAR) ? "movzb" : "movl"); // 
-
-                if(node->ident.type == CHAR){
-                    opcodes[opcodes_count++] = 0x0f;
-                    opcodes[opcodes_count++] = 0xb6;
-                    opcodes[opcodes_count++] = 0x00;
-                } else {
-                    opcodes[opcodes_count++] = 0x8b;
-                    opcodes[opcodes_count++] = 0x00;
-                }
+                emit_load_from_eax(file, node->ident.type);
             }
             return;
         case AST_BINOP:
@@ -892,18 +922,25 @@ void generate_x86(struct ast_node *node, void* *file) {
                 opcodes[opcodes_count++] = 0xb6;
                 opcodes[opcodes_count++] = 0x03;
             } else {
-                asmprintf(file, "movl %%eax, (%%ebx) # Type %d\n", node->data_type);
-                opcodes[opcodes_count++] = 0x89;
-                opcodes[opcodes_count++] = 0x03;
+            asmprintf(file, "# Store\n");
+            emit_store_to_ebx(file, node->data_type);
             }
 
             break;
         case AST_MEMBER_ACCESS:
             generate_x86(node->left, file);
-            asmprintf(file, "movl %d(%%eax), %%eax\n", node->member->offset);
-            opcodes[opcodes_count++] = 0x8b;
-            opcodes[opcodes_count++] = 0x40;
-            opcodes[opcodes_count++] = node->member->offset;
+            if (is_char_type(node->data_type)) {
+                asmprintf(file, "movzbl %d(%%eax), %%eax\n", node->member->offset);
+                opcodes[opcodes_count++] = 0x0f;
+                opcodes[opcodes_count++] = 0xb6;
+                opcodes[opcodes_count++] = 0x40;
+                opcodes[opcodes_count++] = node->member->offset;
+            } else {
+                asmprintf(file, "movl %d(%%eax), %%eax\n", node->member->offset);
+                opcodes[opcodes_count++] = 0x8b;
+                opcodes[opcodes_count++] = 0x40;
+                opcodes[opcodes_count++] = node->member->offset;
+            }
 
             return;
         case AST_DEREF:
@@ -916,9 +953,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 opcodes[opcodes_count++] = 0xb6;
                 opcodes[opcodes_count++] = 0x00;
             } else {
-                asmprintf(file, "movl2 (%%eax), %%eax\n");
-                opcodes[opcodes_count++] = 0x8b;
-                opcodes[opcodes_count++] = 0x00;
+                emit_load_from_eax(file, node->data_type);
             }
             return;
             break;
@@ -928,7 +963,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 generate_x86(node->left, file);
 
                 /* TODO: Very ugly fix */
-                asmprintf(file, "%s (%%eax), %%eax # array_type %d\n", node->left->left->ident.array_type == CHAR ? "movzb" : "movl2", node->left->left->ident.array_type == CHAR ? CHAR : INT);
+                asmprintf(file, "%s (%%eax), %%eax # array_type %d\n", node->left->left->ident.array_type == CHAR ? "movzbl" : "movl", node->left->left->ident.array_type == CHAR ? CHAR : INT);
                 if(node->left->left->ident.array_type == CHAR){
                     opcodes[opcodes_count++] = 0x0f;
                     opcodes[opcodes_count++] = 0xb6;

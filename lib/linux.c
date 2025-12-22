@@ -52,16 +52,22 @@ int read(int fd, char* buf, int count) {
 int scanline(char* buf, int count) {
     char* tmp;
     int i;
+    int n;
     i = 0;
-    while (i < count) {
+    while (i < count - 1) {
         tmp = buf + i;
-        read(0, tmp, 1);
+        n = read(0, tmp, 1);
+        if (n <= 0) {
+            buf[i] = 0;
+            return i;
+        }
         if (*tmp == '\n') {
             *(tmp + 1) = 0;
             return i + 1;
         }
         i = i + 1;
     }
+    buf[i] = 0;
     return i;
 }
 

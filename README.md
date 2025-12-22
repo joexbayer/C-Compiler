@@ -94,6 +94,10 @@ This example demonstrates how to define functions within a struct and how to use
 make tests
 ```
 
+```sh
+docker run --rm -v "$PWD":/work -w /work gcc:latest make tests
+```
+
 ### Examples
 
 Checkout the files in /tests for examples.

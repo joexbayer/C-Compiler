@@ -12,7 +12,7 @@ OUTPUTDIR = ./bin/
 
 SRC_FILES = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*/*.c)
 OBJ_FILES = $(SRC_FILES:$(SRC_DIR)/%.c=$(OUTPUTDIR)%.o)
-TESTS := $(wildcard ./tests/*)
+TESTS := $(wildcard ./tests/*.c)
 
 .PHONY: all clean depend demo tests
 

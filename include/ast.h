@@ -35,11 +35,12 @@ enum ast_nodeType {
 /* AST Node */
 struct ast_node {
     enum ast_nodeType type;
-    int value;
-    int data_type;
+    int value; /* Literal value or symbol table index */
+    int data_type; /* Resolved type for expressions */
     struct ast_node *left;
     struct ast_node *right;
     struct ast_node *next;
+    /* Optional payloads */
     struct identifier ident;
     struct member *member;
     char* asm_code;

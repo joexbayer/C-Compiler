@@ -5,7 +5,7 @@ int main(){
     int n;
     char* a;
     char buffer[100];
-    a = "text.txt";
+    a = "tests/text.txt";
 
     fd = open(a, O_RDONLY, 0);
     if (fd < 0){
