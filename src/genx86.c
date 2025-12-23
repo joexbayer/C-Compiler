@@ -27,6 +27,47 @@ static void emit_i32(int value) {
     opcodes_count += (int)sizeof(value);
 }
 
+static int fits_disp8(int value) {
+    return value >= -128 && value <= 127;
+}
+
+static void emit_modrm_disp(uint8_t modrm_disp8, uint8_t modrm_disp32, int disp) {
+    if (fits_disp8(disp)) {
+        emit_u8(modrm_disp8);
+        emit_u8((uint8_t)disp);
+        return;
+    }
+    emit_u8(modrm_disp32);
+    emit_i32(disp);
+}
+
+static void emit_mov_eax_from_base_disp(int disp, int data_type, uint8_t modrm_disp8, uint8_t modrm_disp32) {
+    if (data_type == CHAR) {
+        emit_u8(0x0f);
+        emit_u8(0xb6);
+        emit_modrm_disp(modrm_disp8, modrm_disp32, disp);
+        return;
+    }
+    emit_u8(0x8b);
+    emit_modrm_disp(modrm_disp8, modrm_disp32, disp);
+}
+
+static void emit_mov_eax_to_base_disp(int disp, int data_type, uint8_t modrm_disp8, uint8_t modrm_disp32) {
+    if (data_type == CHAR) {
+        emit_u8(0x88);
+        emit_modrm_disp(modrm_disp8, modrm_disp32, disp);
+        return;
+    }
+    emit_u8(0x89);
+    emit_modrm_disp(modrm_disp8, modrm_disp32, disp);
+}
+
+static void emit_mov_imm_to_base_disp(int disp, int imm, uint8_t modrm_disp8, uint8_t modrm_disp32) {
+    emit_u8(0xc7);
+    emit_modrm_disp(modrm_disp8, modrm_disp32, disp);
+    emit_i32(imm);
+}
+
 static int is_char_type(int data_type) {
     return data_type == CHAR;
 }
@@ -34,17 +75,12 @@ static int is_char_type(int data_type) {
 static void emit_load_from_ebp(void *file, int offset, int data_type) {
     if (is_char_type(data_type)) {
         asmprintf(file, "movzbl %d(%%ebp), %%eax\n", offset);
-        emit_u8(0x0f);
-        emit_u8(0xb6);
-        emit_u8(0x45);
-        emit_u8((uint8_t)offset);
+        emit_mov_eax_from_base_disp(offset, data_type, 0x45, 0x85);
         return;
     }
 
     asmprintf(file, "movl %d(%%ebp), %%eax\n", offset);
-    emit_u8(0x8b);
-    emit_u8(0x45);
-    emit_u8((uint8_t)offset);
+    emit_mov_eax_from_base_disp(offset, data_type, 0x45, 0x85);
 }
 
 static void emit_load_from_eax(void *file, int data_type) {
@@ -95,8 +131,7 @@ int asmprintf(void* file, const char *format, ...) {
 
 #define GEN_X86_LEAL_EBP(val)\
     emit_u8(0x8d);\
-    emit_u8(0x45);\
-    emit_i32(val);
+    emit_modrm_disp(0x45, 0x85, val);
 
 #define GEN_X86_ESP_EBP()\
     emit_u8(0x89);\
@@ -195,10 +230,10 @@ void generate_x86(struct ast_node *node, void* *file) {
 
 
             if (node->ident.class == Loc) {
-                asmprintf(file, "leal %d(%%ebp), %%eax\n", node->value > 0 ? node->value*4 : node->value); 
-                opcodes[opcodes_count++] = 0x8d;
-                opcodes[opcodes_count++] = 0x45;
-                opcodes[opcodes_count++] = node->value;
+                int offset = ADJUST_SIZE(node);
+                asmprintf(file, "leal %d(%%ebp), %%eax\n", offset);
+                emit_u8(0x8d);
+                emit_modrm_disp(0x45, 0x85, offset);
                 
             } else if (node->ident.class == Glo) {
                 int offset = (node->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
@@ -671,7 +706,7 @@ void generate_x86(struct ast_node *node, void* *file) {
         }
         case AST_BLOCK:
             generate_x86(node->left, file);
-            return;
+            break;
         case AST_EXPR_STMT:
             generate_x86(node->left, file);
             break;
@@ -690,7 +725,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 if(node->left->type == AST_IDENT){
                     if(node->left->ident.class == Loc){
                         asmprintf(file, "movl %%eax, %d(%%ebp)\n", node->left->value);
-                        opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = node->left->value;
+                        emit_mov_eax_to_base_disp(node->left->value, node->left->ident.type, 0x45, 0x85);
                     }
                     else if(node->left->ident.class == Glo){
                         int offset = (node->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
@@ -703,7 +738,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 } else if(node->left->type == AST_MEMBER_ACCESS){
                     if(node->left->left->ident.class == Loc){
                         asmprintf(file, "movl %%eax, %d(%%ebp)\n", ADJUST_SIZE(node->left->left) + node->left->member->offset);
-                        opcodes[opcodes_count++] = 0x89; opcodes[opcodes_count++] = 0x45; opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
+                        emit_mov_eax_to_base_disp(ADJUST_SIZE(node->left->left) + node->left->member->offset, node->left->member->type, 0x45, 0x85);
                     }
                     else if(node->left->left->ident.class == Glo){
                         int offset = (node->left->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
@@ -726,12 +761,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 if (node->left->type == AST_IDENT) {
                     if (node->left->ident.class == Loc) {
                         asmprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, node->left->value);
-
-                        opcodes[opcodes_count++] = 0xc7;
-                        opcodes[opcodes_count++] = 0x45;
-                        opcodes[opcodes_count++] = node->left->value;
-                        *((int*)(opcodes + opcodes_count)) = node->right->value;
-                        opcodes_count += 4;
+                        emit_mov_imm_to_base_disp(node->left->value, node->right->value, 0x45, 0x85);
 
                     } else if (node->left->ident.class == Glo) {
                         int offset = (node->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
@@ -747,27 +777,17 @@ void generate_x86(struct ast_node *node, void* *file) {
                     /* If the ident if a pointer, we need to adjust the code */
                     if(node->left->left->ident.type >= PTR && node->left->left->ident.type < PTR2){
                         asmprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
-                        opcodes[opcodes_count++] = 0x8b;
-                        opcodes[opcodes_count++] = 0x45;
-                        opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left);
+                        emit_mov_eax_from_base_disp(ADJUST_SIZE(node->left->left), INT, 0x45, 0x85);
 
                         asmprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
-                        opcodes[opcodes_count++] = 0xc7;
-                        opcodes[opcodes_count++] = 0x40;
-                        opcodes[opcodes_count++] = node->left->member->offset;
-                        *((int*)(opcodes + opcodes_count)) = node->right->value;
-                        opcodes_count += 4;
+                        emit_mov_imm_to_base_disp(node->left->member->offset, node->right->value, 0x40, 0x80);
 
                         return;
                     } 
 
                     if(node->left->left->ident.class == Loc){
                         asmprintf(file, "movl $%d, %d(%%ebp)\n", node->right->value, ADJUST_SIZE(node->left->left) + node->left->member->offset);
-                        opcodes[opcodes_count++] = 0xc7;
-                        opcodes[opcodes_count++] = 0x45;
-                        opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
-                        *((int*)(opcodes + opcodes_count)) = node->right->value;
-                        opcodes_count += 4;
+                        emit_mov_imm_to_base_disp(ADJUST_SIZE(node->left->left) + node->left->member->offset, node->right->value, 0x45, 0x85);
                     }
                     else if(node->left->left->ident.class == Glo){
                         int offset = (node->left->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
@@ -818,9 +838,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                 /* If the ident if a pointer, we need to adjust the code */
                 if(node->left->ident.type >= PTR && node->left->ident.type < PTR2 && node->right->type == AST_NUM){
                     asmprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left));
-                    opcodes[opcodes_count++] = 0x8b;
-                    opcodes[opcodes_count++] = 0x45;
-                    opcodes[opcodes_count++] = ADJUST_SIZE(node->left);
+                    emit_mov_eax_from_base_disp(ADJUST_SIZE(node->left), INT, 0x45, 0x85);
 
                     asmprintf(file, "pushl %%eax\n");
                     opcodes[opcodes_count++] = 0x50;
@@ -836,9 +854,8 @@ void generate_x86(struct ast_node *node, void* *file) {
 
                 if (node->left->ident.class == Loc) {
                     asmprintf(file, "leal %d(%%ebp), %%eax\n", node->left->value);
-                    opcodes[opcodes_count++] = 0x8d;
-                    opcodes[opcodes_count++] = 0x45;
-                    opcodes[opcodes_count++] = node->left->value;
+                    emit_u8(0x8d);
+                    emit_modrm_disp(0x45, 0x85, node->left->value);
 
 
                 } else if (node->left->ident.class == Glo) {
@@ -856,18 +873,12 @@ void generate_x86(struct ast_node *node, void* *file) {
                 /* If the ident if a pointer, we need to adjust the code */
                 if(node->left->left->ident.type >= PTR && node->left->left->ident.type < PTR2){
                     asmprintf(file, "movl %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left));
-                    opcodes[opcodes_count++] = 0x8b;
-                    opcodes[opcodes_count++] = 0x45;
-                    opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left);
+                    emit_mov_eax_from_base_disp(ADJUST_SIZE(node->left->left), INT, 0x45, 0x85);
 
                     
                     if(node->right->type == AST_NUM){
                         asmprintf(file, "movl $%d, %d(%%eax)\n", node->right->value,  node->left->member->offset);
-                        opcodes[opcodes_count++] = 0xc7;
-                        opcodes[opcodes_count++] = 0x40;
-                        opcodes[opcodes_count++] = node->left->member->offset;
-                        *((int*)(opcodes + opcodes_count)) = node->right->value;
-                        opcodes_count += 4;
+                        emit_mov_imm_to_base_disp(node->left->member->offset, node->right->value, 0x40, 0x80);
 
                         return;
                     } else {
@@ -878,9 +889,7 @@ void generate_x86(struct ast_node *node, void* *file) {
                         asmprintf(file, "popl %%ebx\n");
                         opcodes[opcodes_count++] = 0x5b;
                         asmprintf(file, "movl %%eax, %d(%%ebx)\n", node->left->member->offset);
-                        opcodes[opcodes_count++] = 0x89;
-                        opcodes[opcodes_count++] = 0x43;
-                        opcodes[opcodes_count++] = node->left->member->offset;
+                        emit_mov_eax_to_base_disp(node->left->member->offset, node->left->member->type, 0x43, 0x83);
                 
                     }
                     return;
@@ -888,9 +897,8 @@ void generate_x86(struct ast_node *node, void* *file) {
 
                 /* TODO: Assumes Loc */
                 asmprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset );
-                opcodes[opcodes_count++] = 0x8d;
-                opcodes[opcodes_count++] = 0x45;
-                opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
+                emit_u8(0x8d);
+                emit_modrm_disp(0x45, 0x85, ADJUST_SIZE(node->left->left) + node->left->member->offset);
                 
                 asmprintf(file, "pushl %%eax\n");
                 opcodes[opcodes_count++] = 0x50;
@@ -931,15 +939,10 @@ void generate_x86(struct ast_node *node, void* *file) {
             generate_x86(node->left, file);
             if (is_char_type(node->data_type)) {
                 asmprintf(file, "movzbl %d(%%eax), %%eax\n", node->member->offset);
-                opcodes[opcodes_count++] = 0x0f;
-                opcodes[opcodes_count++] = 0xb6;
-                opcodes[opcodes_count++] = 0x40;
-                opcodes[opcodes_count++] = node->member->offset;
+                emit_mov_eax_from_base_disp(node->member->offset, node->data_type, 0x40, 0x80);
             } else {
                 asmprintf(file, "movl %d(%%eax), %%eax\n", node->member->offset);
-                opcodes[opcodes_count++] = 0x8b;
-                opcodes[opcodes_count++] = 0x40;
-                opcodes[opcodes_count++] = node->member->offset;
+                emit_mov_eax_from_base_disp(node->member->offset, node->data_type, 0x40, 0x80);
             }
 
             return;
@@ -976,12 +979,11 @@ void generate_x86(struct ast_node *node, void* *file) {
             }
 
             if(node->left->type == AST_IDENT ){
-                  if(node->left->ident.class == Loc){
+                if(node->left->ident.class == Loc){
                     asmprintf(file, "# Reference\n");
                     asmprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left));
-                    opcodes[opcodes_count++] = 0x8d;
-                    opcodes[opcodes_count++] = 0x45;
-                    opcodes[opcodes_count++] = ADJUST_SIZE(node->left);
+                    emit_u8(0x8d);
+                    emit_modrm_disp(0x45, 0x85, ADJUST_SIZE(node->left));
 
                 } else if(node->left->ident.class == Glo){
                     int offset = (node->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);
@@ -1017,9 +1019,8 @@ void generate_x86(struct ast_node *node, void* *file) {
                 if(node->left->left->ident.class == Loc){
                     asmprintf(file, "# Reference\n");
                     asmprintf(file, "leal %d(%%ebp), %%eax\n", ADJUST_SIZE(node->left->left) + node->left->member->offset);
-                    opcodes[opcodes_count++] = 0x8d;
-                    opcodes[opcodes_count++] = 0x45;
-                    opcodes[opcodes_count++] = ADJUST_SIZE(node->left->left) + node->left->member->offset;
+                    emit_u8(0x8d);
+                    emit_modrm_disp(0x45, 0x85, ADJUST_SIZE(node->left->left) + node->left->member->offset);
                 }
                 else if(node->left->left->ident.class == Glo){
                     int offset = (node->left->left->value - (long)org_data) + (config.elf ? ELF_HEADER_SIZE : 0);

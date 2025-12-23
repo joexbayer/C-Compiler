@@ -29,7 +29,7 @@ void *zmalloc(int size);
 
 enum TOKENS {
   Num = 128, Fun, Sys, Glo, Loc, Id,
-  Break, Case, Char, Default, Else, Enum, If, Int, Return, Sizeof, Struct, Switch, While, Asm,
+  Break, Case, Char, Default, Else, Enum, For, If, Int, Return, Sizeof, Struct, Switch, While, Asm,
   Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Dot, Arrow, BrakOpen, BrakClose
 };
 

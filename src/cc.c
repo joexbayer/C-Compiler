@@ -40,7 +40,7 @@ int cleanup();
 
 static char *current_position;
 static char *last_position;
-static char *keywords = "break case char default else enum if int return sizeof struct switch while asm "
+static char *keywords = "break case char default else enum for if int return sizeof struct switch while asm "
                         "__interrupt __inportb __outportb __inportw __outportw __inportl __outport __unused void main";
 
 char *data;
@@ -482,6 +482,9 @@ static struct ast_node *parse_binary_op(struct ast_node *left, int level);
 static struct ast_node *parse_member_access(struct ast_node *left);
 static struct ast_node *parse_member_func_call(struct ast_node *node);
 static struct ast_node *parse_array_access(struct ast_node *left);
+static struct ast_node *parse_for_statement();
+static struct ast_node *make_expr_stmt(struct ast_node *expr);
+static void append_stmt(struct ast_node *head, struct ast_node *stmt);
 
 /**
  * @brief Parse an expression and construct an AST node
@@ -1042,6 +1045,102 @@ static struct ast_node *parse_array_access(struct ast_node *left) {
     return node;
 }
 
+static struct ast_node *make_expr_stmt(struct ast_node *expr) {
+    struct ast_node *stmt = zmalloc(sizeof(struct ast_node));
+    stmt->type = AST_EXPR_STMT;
+    stmt->left = expr;
+    return stmt;
+}
+
+static void append_stmt(struct ast_node *head, struct ast_node *stmt) {
+    struct ast_node *current = head;
+    while (current->next) {
+        current = current->next;
+    }
+    current->next = stmt;
+}
+
+static struct ast_node *parse_for_statement() {
+    struct ast_node *init_expr = NULL;
+    struct ast_node *cond_expr = NULL;
+    struct ast_node *post_expr = NULL;
+    struct ast_node *body;
+    struct ast_node *while_node;
+
+    next();
+    if (token != '(') {
+        printf("%d: open parenthesis expected\n", line);
+        exit(-1);
+    }
+    next();
+
+    if (token != ';') {
+        init_expr = expression(Assign);
+    }
+    if (token != ';') {
+        printf("%d: semicolon expected in for init\n", line);
+        exit(-1);
+    }
+    next();
+
+    if (token != ';') {
+        cond_expr = expression(Assign);
+    }
+    if (token != ';') {
+        printf("%d: semicolon expected in for condition\n", line);
+        exit(-1);
+    }
+    next();
+
+    if (token != ')') {
+        post_expr = expression(Assign);
+    }
+    if (token != ')') {
+        printf("%d: close parenthesis expected in for\n", line);
+        exit(-1);
+    }
+    next();
+
+    if (!cond_expr) {
+        cond_expr = create_ast_node(AST_NUM, 1, INT);
+    }
+
+    body = statement();
+
+    while_node = zmalloc(sizeof(struct ast_node));
+    while_node->type = AST_WHILE;
+    while_node->left = cond_expr;
+
+    if (post_expr) {
+        struct ast_node *post_stmt = make_expr_stmt(post_expr);
+        if (body->type == AST_BLOCK) {
+            if (body->left) {
+                append_stmt(body->left, post_stmt);
+            } else {
+                body->left = post_stmt;
+            }
+        } else {
+            struct ast_node *block = zmalloc(sizeof(struct ast_node));
+            block->type = AST_BLOCK;
+            block->left = body;
+            append_stmt(body, post_stmt);
+            body = block;
+        }
+    }
+
+    while_node->right = body;
+
+    if (init_expr) {
+        struct ast_node *block = zmalloc(sizeof(struct ast_node));
+        block->type = AST_BLOCK;
+        block->left = make_expr_stmt(init_expr);
+        block->left->next = while_node;
+        return block;
+    }
+
+    return while_node;
+}
+
 
 static struct ast_node *statement() {
     struct ast_node *node, *condition;
@@ -1077,6 +1176,9 @@ static struct ast_node *statement() {
             }
 
             return node;
+
+        case For:
+            return parse_for_statement();
         
         case Asm:
             next(); // Move past `asm`
